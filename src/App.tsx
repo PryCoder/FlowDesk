@@ -14,6 +14,8 @@ import Dashboard from "./pages/Dashboard";
 import Meetings from "./pages/Meetings";
 import Tasks from "./pages/Tasks";
 import Emails from "./pages/Emails";
+import Analytics from "./pages/Analytics";
+import Wellness from "./pages/Wellness";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -115,10 +117,7 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <div className="p-8">
-                        <h1 className="text-3xl font-clash font-bold gradient-text">Analytics</h1>
-                        <p className="text-muted-foreground mt-2">Coming soon...</p>
-                      </div>
+                      <Analytics />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -128,10 +127,7 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <div className="p-8">
-                        <h1 className="text-3xl font-clash font-bold gradient-text">Wellness</h1>
-                        <p className="text-muted-foreground mt-2">Coming soon...</p>
-                      </div>
+                      <Wellness />
                     </Layout>
                   </ProtectedRoute>
                 }
