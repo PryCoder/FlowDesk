@@ -22,6 +22,8 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          glow: "hsl(var(--primary-glow))",
+          pink: "hsl(var(--primary-pink))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -38,6 +40,8 @@ export default {
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
+          orange: "hsl(var(--accent-orange))",
+          cyan: "hsl(var(--accent-cyan))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -46,17 +50,40 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+          border: "hsl(var(--card-border))",
         },
-        sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
+        glass: {
+          DEFAULT: "hsl(var(--glass))",
+          border: "hsl(var(--glass-border))",
+          hover: "hsl(var(--glass-hover))",
         },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+      },
+      fontFamily: {
+        clash: ['"Clash Display"', 'sans-serif'],
+        satoshi: ['"Satoshi"', 'sans-serif'],
+        inter: ['"Inter"', 'sans-serif'],
+        'dm-sans': ['"DM Sans"', 'sans-serif'],
+        'space-grotesk': ['"Space Grotesk"', 'monospace'],
+        jakarta: ['"Plus Jakarta Sans"', 'sans-serif'],
+      },
+      backgroundImage: {
+        'gradient-primary': 'var(--gradient-primary)',
+        'gradient-secondary': 'var(--gradient-secondary)',
+        'gradient-accent': 'var(--gradient-accent)',
+        'gradient-glass': 'var(--gradient-glass)',
+        'gradient-glow': 'var(--gradient-glow)',
+      },
+      boxShadow: {
+        glass: 'var(--shadow-glass)',
+        glow: 'var(--shadow-glow)',
+        premium: 'var(--shadow-premium)',
+        float: 'var(--shadow-float)',
+      },
+      transitionTimingFunction: {
+        premium: 'var(--ease-premium)',
+        bounce: 'var(--ease-bounce)',
       },
       borderRadius: {
         lg: "var(--radius)",
