@@ -17,27 +17,43 @@ dotenv.config();
 
 const app = express();
 const server = createServer(app);
+
+// Dynamically allow requests from frontend (local or deployed)
+const allowedOrigins = [
+  'http://localhost:3000', // local frontend
+  process.env.FRONTEND_URL // deployed frontend, e.g., https://flow-desk-eta.vercel.app
+];
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ["GET", "POST"]
   }
 });
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Socket.io for real-time features
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-  
+
   socket.on('join_company', (companyId) => {
     socket.join(companyId);
   });
-  
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
@@ -51,12 +67,12 @@ app.use('/api/meetings', meetingRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use("/api/gemini", geminiRoutes);
+app.use('/api/gemini', geminiRoutes);
 
-// Health checksssssssssssssssssssssssss
+// Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
+  res.status(200).json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     service: 'Agentic Work Assistant API'
   });

@@ -77,7 +77,7 @@ const DashboardPage = () => {
   // Get token and check authentication
   const token = localStorage.getItem('token');
   const storedEmails = localStorage.getItem('gmail_emails_cache');
-
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const fetchCurrentUser = async () => {
     if (!token) {
       setError('No authentication token found');
@@ -86,7 +86,7 @@ const DashboardPage = () => {
     }
 
     try {
-      const res = await fetch('http://localhost:3001/api/auth/current-user', {
+      const res = await fetch(`${backendUrl}/api/auth/current-user`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
