@@ -9,17 +9,21 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 
 // Pages
-import Login from "./pages/Login";
+
+import Gmail from "./pages/g.tsx";
 import Dashboard from "./pages/Dashboard";
 import Meetings from "./pages/Meetings";
+import MeetingsD from "./pages/MD.tsx";
 import Tasks from "./pages/Tasks";
 import Emails from "./pages/Emails";
 import Analytics from "./pages/Analytics";
 import Wellness from "./pages/Wellness";
-import NotFound from "./pages/NotFound";
+
 import { Profile } from "./pages/Profile";
 import { Settings } from "./pages/Settings";
 import Registration from "./pages/Registration";
+import GmailAuthPage from "./pages/g.tsx";
+import DashboardPage from "./pages/Dashboard";
 
 const queryClient = new QueryClient();
 
@@ -77,18 +81,13 @@ const App = () => {
                  
               }
             />
-              <Route 
-                path="/login" 
-                element={
-                  user ? <Navigate to="/" replace /> : <Login />
-                } 
-              />
+            
               <Route
                 path="/"
                 element={
                   <ProtectedRoute>
                     <Layout>
-                      <Dashboard />
+                      <DashboardPage />
                     </Layout>
                   </ProtectedRoute>
                 }
@@ -103,6 +102,16 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+               <Route
+                path="/meetings/:meetingId"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <MeetingsD />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/emails"
                 element={
@@ -112,7 +121,14 @@ const App = () => {
                     </Layout>
                   </ProtectedRoute>
                 }
-              />
+              />  <Route
+              path="/g"
+              element={
+              
+                    <GmailAuthPage />
+               
+              }
+            />
               <Route
                 path="/tasks"
                 element={
@@ -168,7 +184,7 @@ const App = () => {
                 }
               />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
+             
             </Routes>
           </AnimatePresence>
         </BrowserRouter>
