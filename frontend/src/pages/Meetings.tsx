@@ -8,10 +8,10 @@ import {
   MoreVertical, Sparkles, Zap, Target, Coffee, MessageCircle,
   UserPlus, MapPin, Shield, Brain, Menu, Grid, List
 } from 'lucide-react';
-
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
 // Enhanced API Service with Error Handling
 const meetingService = {
-  baseURL: 'http://localhost:3001/api/meetings',
+  baseURL: `${backendUrl}/api/meetings`,
   
   async request(endpoint, options = {}) {
     try {

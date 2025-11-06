@@ -18,35 +18,38 @@ dotenv.config();
 const app = express();
 const server = createServer(app);
 
-// Dynamically allow requests from frontend (local or deployed)
+// Allowed frontend URLs
 const allowedOrigins = [
-  'http://localhost:3000', // local frontend
-  process.env.FRONTEND_URL // deployed frontend, e.g., https://flow-desk-eta.vercel.app
+  'http://localhost:3000', // Local frontend
+  process.env.FRONTEND_URL || 'https://flow-desk-eta.vercel.app', // Deployed frontend
 ];
 
+// Global CORS middleware (handles preflight automatically)
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow Postman / server-side requests
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error(`CORS policy: Not allowed from ${origin}`), false);
+    }
+  },
+  credentials: true,
+}));
+
+// Security headers and body parsing
+app.use(helmet());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: allowedOrigins,
     methods: ["GET", "POST"]
   }
 });
 
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
-}));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Socket.io for real-time features
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
@@ -61,7 +64,7 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
-// Routes
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/emails', emailRoutes);
@@ -81,9 +84,10 @@ app.get('/health', (req, res) => {
 // Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  res.status(500).json({ error: err.message || 'Something went wrong!' });
 });
 
+// Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

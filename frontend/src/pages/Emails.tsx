@@ -245,7 +245,7 @@ export default function Emails() {
   const [isTablet, setIsTablet] = useState(false);
 
   const { toast } = useToast();
-
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const replyForm = useForm<ReplyFormValues>({
     resolver: zodResolver(replyFormSchema),
     defaultValues: { content: "", tone: "professional" },
@@ -612,7 +612,7 @@ export default function Emails() {
       
       if (headers.Authorization) {
         const res = await axios.post(
-          "http://localhost:3001/api/emails/suggest-reply",
+          `${backendUrl}/api/emails/suggest-reply`,
           { text: emailText, tone },
           { headers }
         );
