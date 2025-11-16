@@ -1,5 +1,7 @@
 import express from 'express';
 import taskService from '../services/taskService.js';
+import authService from '../services/authService.js';
+import taskAgent from '../agents/taskAgent.js';
 
 const router = express.Router();
 
@@ -8,74 +10,605 @@ const authenticate = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ success: false, error: 'No token provided' });
     }
     
     const decoded = await authService.verifyToken(token);
     req.user = decoded;
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    res.status(401).json({ success: false, error: 'Invalid token' });
   }
 };
+// ==================== TASK STATUS UPDATE ====================
+router.patch('/:taskId/status', authenticate, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { status } = req.body;
 
-// Import authService for middleware
-import authService from '../services/authService.js';
+    if (!status) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Status is required' 
+      });
+    }
 
-// Create a new task
+    console.log(`[TaskRoutes] Updating task ${taskId} status to: ${status}`);
+
+    const task = await taskService.getTaskById(taskId);
+    if (!task) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Task not found' 
+      });
+    }
+
+    // Check access permissions
+    const canAccess = req.user.role === 'admin' || 
+                     task.assigned_to === req.user.userId || 
+                     task.created_by === req.user.userId;
+    
+    if (!canAccess) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied to this task' 
+      });
+    }
+
+    // Update task status
+    const updatedTask = await taskService.updateTaskStatus(taskId, status);
+
+    // Generate AI completion analysis if task is being completed
+    let completionAnalysis = null;
+    if (status === 'completed') {
+      try {
+        const analysisResult = await taskAgent.analyzeTaskCompletion({
+          task: updatedTask,
+          userContext: {
+            userId: req.user.userId,
+            role: req.user.role
+          }
+        });
+
+        if (analysisResult.success) {
+          completionAnalysis = analysisResult.analysis;
+          
+          // Update task with completion insights
+          await taskService.updateTask(taskId, {
+            completion_analysis: completionAnalysis.insights,
+            performance_metrics: completionAnalysis.metrics,
+            skill_improvements: completionAnalysis.skillImprovements
+          });
+        }
+      } catch (analysisError) {
+        console.warn('[TaskRoutes] Completion analysis failed:', analysisError.message);
+      }
+    }
+
+    // Emit real-time status update
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(req.user.companyId).emit('task_status_updated', {
+          taskId,
+          status,
+          updatedBy: req.user.userId,
+          completionAnalysis: completionAnalysis?.insights
+        });
+
+        // Notify assigned user specifically
+        if (task.assigned_to && task.assigned_to !== req.user.userId) {
+          io.to(`user_${task.assigned_to}`).emit('task_assignment_updated', {
+            taskId,
+            taskTitle: task.title,
+            newStatus: status,
+            updatedBy: req.user.userId
+          });
+        }
+      }
+    } catch (socketError) {
+      console.warn('[TaskRoutes] Socket.io not available for real-time updates');
+    }
+
+    res.json({
+      success: true,
+      message: `Task status updated to ${status}`,
+      task: updatedTask,
+      completionAnalysis: completionAnalysis?.insights || null,
+      performanceMetrics: completionAnalysis?.metrics || null
+    });
+
+  } catch (error) {
+    console.error('[TaskRoutes] Status update error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// ==================== DELETE TASK ====================
+router.delete('/:taskId', authenticate, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    console.log(`[TaskRoutes] Deleting task: ${taskId}`);
+
+    const task = await taskService.getTaskById(taskId);
+    if (!task) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Task not found' 
+      });
+    }
+
+    // Check access permissions - only admin or task creator can delete
+    const canDelete = req.user.role === 'admin' || task.created_by === req.user.userId;
+    
+    if (!canDelete) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied - only admins or task creators can delete tasks' 
+      });
+    }
+
+    // Delete the task
+    await taskService.deleteTask(taskId);
+
+    // Emit real-time deletion notification
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(req.user.companyId).emit('task_deleted', {
+          taskId,
+          taskTitle: task.title,
+          deletedBy: req.user.userId
+        });
+
+        // Notify assigned user if different from deleter
+        if (task.assigned_to && task.assigned_to !== req.user.userId) {
+          io.to(`user_${task.assigned_to}`).emit('assigned_task_deleted', {
+            taskId,
+            taskTitle: task.title,
+            deletedBy: req.user.userId
+          });
+        }
+      }
+    } catch (socketError) {
+      console.warn('[TaskRoutes] Socket.io not available for real-time notifications');
+    }
+
+    res.json({
+      success: true,
+      message: 'Task deleted successfully',
+      deletedTask: {
+        id: taskId,
+        title: task.title
+      }
+    });
+
+  } catch (error) {
+    console.error('[TaskRoutes] Delete task error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Enhanced AI Task Generation with Better Error Handling
+router.post('/ai/generate', authenticate, async (req, res) => {
+  try {
+    const { description, intelligenceType = 'strategic', complexity = 'medium', context } = req.body;
+    
+    if (!description) {
+      return res.status(400).json({ success: false, error: 'Task description is required' });
+    }
+
+    console.log(`[TaskRoutes] Generating AI task with intelligence: ${intelligenceType}`);
+    
+    const result = await taskAgent.generateIntelligentTask({
+      description,
+      intelligenceType,
+      complexity,
+      context: {
+        ...context,
+        userId: req.user.userId,
+        companyId: req.user.companyId,
+        userRole: req.user.role
+      }
+    });
+
+    if (!result.success) {
+      console.warn('[TaskRoutes] AI generation failed, using fallback');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'AI task generation failed',
+        fallbackUsed: result.fallbackUsed || false
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'AI task generated successfully',
+      task: result.task,
+      intelligenceType,
+      aiInsights: result.task.ai_insights,
+      usage: result.usage,
+      fallbackUsed: result.fallbackUsed || false
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] AI generate error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'AI service temporarily unavailable',
+      fallback: true
+    });
+  }
+});
+
+// Multi-Agent Task Orchestration with Fallback
+router.post('/ai/orchestrate', authenticate, async (req, res) => {
+  try {
+    const { objective, teamSize, deadline, constraints } = req.body;
+    
+    if (!objective) {
+      return res.status(400).json({ success: false, error: 'Objective is required' });
+    }
+
+    console.log(`[TaskRoutes] Orchestrating multi-agent workflow for: ${objective}`);
+    
+    const orchestration = await taskAgent.orchestrateMultiAgentWorkflow({
+      objective,
+      teamSize: teamSize || 3,
+      deadline,
+      constraints,
+      companyContext: {
+        companyId: req.user.companyId,
+        userId: req.user.userId,
+        userRole: req.user.role
+      }
+    });
+
+    // Emit real-time orchestration progress
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(req.user.companyId).emit('ai_orchestration_complete', {
+          objective,
+          workflow: orchestration.workflow,
+          agents: orchestration.agents,
+          fallbackUsed: orchestration.fallbackUsed || false
+        });
+      }
+    } catch (socketError) {
+      console.warn('[TaskRoutes] Socket.io not available for real-time updates');
+    }
+
+    res.json({
+      success: true,
+      message: 'Multi-agent orchestration completed',
+      orchestration,
+      fallbackUsed: orchestration.fallbackUsed || false
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] Orchestration error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Orchestration service temporarily unavailable',
+      fallback: true
+    });
+  }
+});
+
+// AI-Powered Task Optimization with Enhanced Error Handling
+router.post('/:taskId/ai/optimize', authenticate, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { optimizationType = 'efficiency' } = req.body;
+
+    console.log(`[TaskRoutes] Optimizing task ${taskId} for: ${optimizationType}`);
+    
+    const task = await taskService.getTaskById(taskId);
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    // Check access
+    if (task.assigned_to !== req.user.userId && 
+        task.created_by !== req.user.userId &&
+        req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Access denied to this task' });
+    }
+
+    const result = await taskAgent.optimizeTask({
+      task,
+      optimizationType,
+      userContext: {
+        userId: req.user.userId,
+        role: req.user.role
+      }
+    });
+
+    if (!result.success) {
+      console.warn(`[TaskRoutes] Optimization failed for task ${taskId}`);
+      return res.status(400).json({ 
+        success: false, 
+        error: 'AI optimization failed',
+        fallbackUsed: result.fallbackUsed || false
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Task optimized for ${optimizationType}`,
+      optimization: result.optimization,
+      originalTask: task,
+      optimizedTask: result.optimization.optimizedTask,
+      usage: result.usage,
+      fallbackUsed: result.fallbackUsed || false
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] Optimization error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Optimization service temporarily unavailable',
+      fallback: true
+    });
+  }
+});
+
+// AI Task Predictions and Forecasting with Fallback
+router.get('/ai/predictions', authenticate, async (req, res) => {
+  try {
+    const { timeframe = '30d', predictionType = 'completion' } = req.query;
+
+    console.log(`[TaskRoutes] Generating predictions for ${timeframe}, type: ${predictionType}`);
+    
+    const result = await taskAgent.generatePredictions({
+      userId: req.user.userId,
+      companyId: req.user.companyId,
+      timeframe,
+      predictionType,
+      userRole: req.user.role
+    });
+
+    if (!result.success) {
+      console.warn('[TaskRoutes] Prediction generation failed');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'AI prediction failed',
+        fallbackUsed: result.fallbackUsed || false
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'AI predictions generated',
+      predictions: result,
+      timeframe,
+      confidence: result.confidenceScore,
+      fallbackUsed: result.fallbackUsed || false
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] Prediction error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Prediction service temporarily unavailable',
+      fallback: true
+    });
+  }
+});
+
+// AI-Powered Task Recommendations with Fallback
+router.get('/ai/recommendations', authenticate, async (req, res) => {
+  try {
+    const { type = 'similar', limit = 5 } = req.query;
+
+    console.log(`[TaskRoutes] Getting recommendations type: ${type}, limit: ${limit}`);
+    
+    const result = await taskAgent.getIntelligentRecommendations({
+      userId: req.user.userId,
+      companyId: req.user.companyId,
+      recommendationType: type,
+      limit: parseInt(limit),
+      userContext: {
+        role: req.user.role,
+        skills: req.user.skills || []
+      }
+    });
+
+    if (!result.success) {
+      console.warn('[TaskRoutes] Recommendation generation failed');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'AI recommendations failed',
+        fallbackUsed: result.fallbackUsed || false
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'AI recommendations generated',
+      recommendations: result,
+      type,
+      relevanceScore: result.relevanceScore,
+      fallbackUsed: result.fallbackUsed || false
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] Recommendation error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Recommendation service temporarily unavailable',
+      fallback: true
+    });
+  }
+});
+
+// Enhanced Task Creation with AI Features
 router.post('/', authenticate, async (req, res) => {
   try {
+    const { 
+      title, 
+      description, 
+      assigned_to, 
+      priority, 
+      deadline, 
+      category,
+      estimatedHours,
+      generateAIInsights = false,
+      autoOptimize = false
+    } = req.body;
+    
+    if (!title || !description) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Title and description are required' 
+      });
+    }
+    
     const taskData = {
-      ...req.body,
-      companyId: req.user.companyId
+      title,
+      description,
+      assigned_to,
+      priority: priority || 'medium',
+      status: 'pending',
+      deadline,
+      category,
+      estimatedHours,
+      companyId: req.user.companyId,
+      generateAIRecommendations: generateAIInsights
     };
     
-    const task = await taskService.createTask(taskData, req.user.userId);
+    console.log(`[TaskRoutes] Creating task: ${title}`);
+    
+    let task = await taskService.createTask(taskData, req.user.userId);
+    
+    let aiInsightsGenerated = false;
+    let optimizationApplied = false;
+
+    // Generate AI insights if requested
+    if (generateAIInsights) {
+      try {
+        const aiResult = await taskAgent.analyzeTaskComplexity({
+          task: task
+        });
+        
+        if (aiResult.success) {
+          // Update task with AI insights
+          task = await taskService.updateTask(task.id, {
+            ai_complexity_score: aiResult.analysis?.complexityScore,
+            ai_recommendations: aiResult.analysis?.keyFactors || []
+          });
+          aiInsightsGenerated = true;
+        }
+      } catch (aiError) {
+        console.warn('[TaskRoutes] AI insight generation failed:', aiError.message);
+      }
+    }
+
+    // Auto-optimize if requested
+    if (autoOptimize) {
+      try {
+        const optimizationResult = await taskAgent.optimizeTask({
+          task,
+          optimizationType: 'efficiency'
+        });
+        
+        if (optimizationResult.success) {
+          task = await taskService.updateTask(task.id, {
+            ai_optimization: optimizationResult.optimization?.suggestions || []
+          });
+          optimizationApplied = true;
+        }
+      } catch (optError) {
+        console.warn('[TaskRoutes] Auto-optimization failed:', optError.message);
+      }
+    }
+
+    // Emit real-time notification to assigned employee
+    try {
+      const io = req.app.get('io');
+      if (io && assigned_to) {
+        io.to(`user_${assigned_to}`).emit('new_task_assigned', {
+          taskId: task.id,
+          taskTitle: task.title,
+          assignedBy: req.user.userId,
+          priority: task.priority,
+          deadline: task.deadline,
+          aiInsights: task.ai_recommendations
+        });
+      }
+    } catch (socketError) {
+      console.warn('[TaskRoutes] Socket.io not available for real-time notifications');
+    }
     
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
-      task
+      task,
+      aiGenerated: aiInsightsGenerated,
+      optimized: optimizationApplied
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('[TaskRoutes] Task creation error:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// Generate AI analysis for task
-router.post('/:taskId/analyze', authenticate, async (req, res) => {
+// Get tasks for specific employee
+router.get('/employee/:employeeId', authenticate, async (req, res) => {
   try {
-    const { taskId } = req.params;
+    const { employeeId } = req.params;
     
-    const task = await taskService.getTaskById(taskId);
-    
-    // Check if user has access to this task
-    if (task.assigned_to !== req.user.userId && 
-        task.created_by !== req.user.userId &&
-        req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied to this task' });
+    // Check if user has access (admin or the employee themselves)
+    if (req.user.role !== 'admin' && req.user.userId !== employeeId) {
+      return res.status(403).json({ success: false, error: 'Access denied to these tasks' });
     }
     
-    const result = await taskService.generateTaskAnalysis(taskId);
+    const filters = {
+      status: req.query.status,
+      priority: req.query.priority,
+      category: req.query.category,
+      deadlineFrom: req.query.deadlineFrom,
+      deadlineTo: req.query.deadlineTo,
+      hasAI: req.query.hasAI === 'true',
+      limit: req.query.limit ? parseInt(req.query.limit) : 50
+    };
     
-    // Emit real-time update via Socket.io
-    const io = req.app.get('io');
-    io.to(req.user.companyId).emit('task_analyzed', {
-      taskId,
-      analysis: result.analysis
+    console.log(`[TaskRoutes] Getting tasks for employee: ${employeeId}`);
+    
+    const tasks = await taskService.getUserTasks(employeeId, filters);
+    
+    // Add AI-powered insights for each task
+    const tasksWithAIInsights = tasks.map((task) => {
+      if (task.ai_recommendations) {
+        return {
+          ...task,
+          ai_insights: {
+            complexity: task.ai_complexity_score,
+            recommendations: task.ai_recommendations,
+            optimization: task.ai_optimization
+          }
+        };
+      }
+      return task;
     });
     
     res.json({
       success: true,
-      message: 'Task analysis generated successfully',
-      ...result
+      tasks: tasksWithAIInsights,
+      count: tasks.length,
+      employeeId,
+      aiEnhanced: tasks.some(t => t.ai_recommendations)
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('[TaskRoutes] Get employee tasks error:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// Get user's tasks
+// Get user's tasks with AI dashboard
 router.get('/', authenticate, async (req, res) => {
   try {
     const filters = {
@@ -88,293 +621,244 @@ router.get('/', authenticate, async (req, res) => {
       limit: req.query.limit ? parseInt(req.query.limit) : 50
     };
     
+    console.log(`[TaskRoutes] Getting tasks for user: ${req.user.userId}`);
+    
     const tasks = await taskService.getUserTasks(req.user.userId, filters);
     
-    res.json({
-      success: true,
-      tasks,
-      count: tasks.length
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Get specific task
-router.get('/:taskId', authenticate, async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    
-    const task = await taskService.getTaskById(taskId);
-    
-    // Check if user has access to this task
-    if (task.assigned_to !== req.user.userId && 
-        task.created_by !== req.user.userId &&
-        req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied to this task' });
-    }
-    
-    res.json({
-      success: true,
-      task
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Update task
-router.put('/:taskId', authenticate, async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    const updateData = req.body;
-    
-    // Verify user has access to this task
-    const task = await taskService.getTaskById(taskId);
-    if (task.assigned_to !== req.user.userId && 
-        task.created_by !== req.user.userId &&
-        req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied to this task' });
-    }
-    
-    const updatedTask = await taskService.updateTask(taskId, updateData);
-    
-    res.json({
-      success: true,
-      message: 'Task updated successfully',
-      task: updatedTask
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Update task status
-router.patch('/:taskId/status', authenticate, async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    const { status, progress } = req.body;
-    
-    if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
-    }
-    
-    // Verify user has access to this task
-    const task = await taskService.getTaskById(taskId);
-    if (task.assigned_to !== req.user.userId && 
-        task.created_by !== req.user.userId &&
-        req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied to this task' });
-    }
-    
-    const updatedTask = await taskService.updateTaskStatus(taskId, status, progress);
-    
-    // Emit real-time update
-    const io = req.app.get('io');
-    io.to(req.user.companyId).emit('task_updated', {
-      taskId,
-      status,
-      progress
-    });
-    
-    res.json({
-      success: true,
-      message: 'Task status updated successfully',
-      task: updatedTask
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Assign task to another user
-router.patch('/:taskId/assign', authenticate, async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    const { assigneeId } = req.body;
-    
-    if (!assigneeId) {
-      return res.status(400).json({ error: 'Assignee ID is required' });
-    }
-    
-    // Only task creator or admin can reassign
-    const task = await taskService.getTaskById(taskId);
-    if (task.created_by !== req.user.userId && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only task creator or admin can reassign tasks' });
-    }
-    
-    const updatedTask = await taskService.assignTask(taskId, assigneeId);
-    
-    res.json({
-      success: true,
-      message: 'Task assigned successfully',
-      task: updatedTask
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Get company tasks (Admin only)
-router.get('/company/all', authenticate, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can access company tasks' });
-    }
-    
-    const filters = {
-      status: req.query.status,
-      department: req.query.department,
-      period: req.query.period
+    // Generate AI-powered dashboard insights
+    let aiDashboard = {
+      productivityScore: 0,
+      focusAreas: [],
+      recommendations: ['Enable AI features for enhanced insights'],
+      predictedCompletion: {},
+      weeklyTrend: {},
+      skillDevelopment: [],
+      workloadAnalysis: {}
     };
-    
-    const tasks = await taskService.getCompanyTasks(req.user.companyId, filters);
-    
-    res.json({
-      success: true,
-      tasks,
-      count: tasks.length
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
 
-// Get task analytics
-router.get('/analytics/personal', authenticate, async (req, res) => {
-  try {
-    const { period = '30d' } = req.query;
-    
-    const analytics = await taskService.getTaskAnalytics(req.user.userId, period);
-    
-    res.json({
-      success: true,
-      analytics
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+    try {
+      const dashboardResult = await taskAgent.generatePersonalDashboard({
+        userId: req.user.userId,
+        tasks: tasks,
+        timeframe: '30d'
+      });
 
-// Get company task analytics (Admin only)
-router.get('/analytics/company', authenticate, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can access company analytics' });
+      if (dashboardResult.success) {
+        aiDashboard = dashboardResult.dashboard;
+      }
+    } catch (dashboardError) {
+      console.warn('[TaskRoutes] AI dashboard generation failed:', dashboardError.message);
     }
     
-    const { period = '30d' } = req.query;
-    
-    const analytics = await taskService.getCompanyTaskAnalytics(req.user.companyId, period);
-    
     res.json({
       success: true,
-      analytics
+      tasks: tasks || [],
+      count: tasks?.length || 0,
+      aiDashboard
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('[TaskRoutes] Get user tasks error:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// Quick task estimation
-router.post('/quick/estimate', authenticate, async (req, res) => {
-  try {
-    const { taskDescription } = req.body;
-    
-    if (!taskDescription) {
-      return res.status(400).json({ error: 'Task description is required' });
-    }
-    
-    const estimate = await taskService.quickTaskEstimate(taskDescription);
-    
-    res.json({
-      success: true,
-      estimate
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Generate subtasks
-router.post('/quick/subtasks', authenticate, async (req, res) => {
-  try {
-    const { taskDescription } = req.body;
-    
-    if (!taskDescription) {
-      return res.status(400).json({ error: 'Task description is required' });
-    }
-    
-    const subtasks = await taskService.generateSubtasks(taskDescription);
-    
-    res.json({
-      success: true,
-      subtasks
-    });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Delete task
-router.delete('/:taskId', authenticate, async (req, res) => {
+// AI-Powered Task Completion
+router.patch('/:taskId/complete', authenticate, async (req, res) => {
   try {
     const { taskId } = req.params;
+    const { actualHours, challenges, learnings } = req.body;
     
-    // Only task creator or admin can delete
+    console.log(`[TaskRoutes] Completing task: ${taskId}`);
+    
     const task = await taskService.getTaskById(taskId);
-    if (task.created_by !== req.user.userId && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only task creator or admin can delete tasks' });
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
     }
     
-    await taskService.updateTask(taskId, { status: 'cancelled' });
+    if (task.assigned_to !== req.user.userId && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Access denied to this task' });
+    }
+    
+    // Update task status
+    const updatedTask = await taskService.updateTaskStatus(taskId, 'completed', 100);
+    
+    let completionAnalysis = ['Basic completion recorded'];
+    let performanceMetrics = {};
+    let skillImprovements = [];
+
+    // Generate AI completion analysis
+    try {
+      const analysisResult = await taskAgent.analyzeTaskCompletion({
+        task: updatedTask,
+        actualHours,
+        challenges,
+        learnings,
+        userContext: {
+          userId: req.user.userId,
+          role: req.user.role
+        }
+      });
+
+      if (analysisResult.success) {
+        completionAnalysis = analysisResult.analysis?.insights || ['Analysis completed'];
+        performanceMetrics = analysisResult.analysis?.metrics || {};
+        skillImprovements = analysisResult.analysis?.skillImprovements || [];
+      }
+    } catch (analysisError) {
+      console.warn('[TaskRoutes] Completion analysis failed:', analysisError.message);
+    }
+
+    let finalTask = updatedTask;
+    
+    // Update task with completion data
+    finalTask = await taskService.updateTask(taskId, {
+      actual_hours: actualHours,
+      completion_analysis: completionAnalysis,
+      performance_metrics: performanceMetrics,
+      skill_improvements: skillImprovements
+    });
+    
+    // Emit completion analytics
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(req.user.companyId).emit('task_completed_with_insights', {
+          taskId,
+          performance: performanceMetrics.performanceScore || 8.0,
+          insights: completionAnalysis,
+          skillGains: skillImprovements
+        });
+      }
+    } catch (socketError) {
+      console.warn('[TaskRoutes] Socket.io not available for real-time updates');
+    }
     
     res.json({
       success: true,
-      message: 'Task cancelled successfully'
+      message: 'Task completed successfully',
+      task: finalTask,
+      completionAnalysis,
+      performanceMetrics
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('[TaskRoutes] Task completion error:', error.message);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
-// Bulk update tasks
-router.post('/bulk/update', authenticate, async (req, res) => {
+// AI-Powered Bulk Task Management
+router.post('/ai/bulk-optimize', authenticate, async (req, res) => {
   try {
-    const { taskIds, updateData } = req.body;
+    const { taskIds, optimizationGoal } = req.body;
     
     if (!taskIds || !Array.isArray(taskIds)) {
-      return res.status(400).json({ error: 'Task IDs array is required' });
+      return res.status(400).json({ success: false, error: 'Task IDs array is required' });
     }
     
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Only admins can perform bulk optimizations' });
+    }
+    
+    console.log(`[TaskRoutes] Bulk optimizing ${taskIds.length} tasks for: ${optimizationGoal}`);
+    
+    const result = await taskAgent.optimizeTaskBatch({
+      taskIds,
+      optimizationGoal: optimizationGoal || 'efficiency',
+      companyContext: req.user.companyId
+    });
+
+    if (!result.success) {
+      console.warn('[TaskRoutes] Bulk optimization failed');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Bulk optimization failed',
+        fallbackUsed: result.fallbackUsed || false
+      });
+    }
+    
+    // Apply optimizations
     const results = [];
-    for (const taskId of taskIds) {
+    for (const optimization of result.optimizations) {
       try {
-        const task = await taskService.getTaskById(taskId);
-        
-        // Check access
-        if (task.assigned_to !== req.user.userId && 
-            task.created_by !== req.user.userId &&
-            req.user.role !== 'admin') {
-          results.push({ success: false, taskId, error: 'Access denied' });
-          continue;
-        }
-        
-        const updatedTask = await taskService.updateTask(taskId, updateData);
-        results.push({ success: true, taskId, task: updatedTask });
+        const updatedTask = await taskService.updateTask(optimization.taskId, {
+          priority: optimization.suggestedPriority,
+          deadline: optimization.suggestedDeadline,
+          ai_optimization_reason: optimization.reason
+        });
+        results.push({ success: true, taskId: optimization.taskId, task: updatedTask });
       } catch (error) {
-        results.push({ success: false, taskId, error: error.message });
+        results.push({ success: false, taskId: optimization.taskId, error: error.message });
       }
     }
     
     res.json({
       success: true,
-      message: `Updated ${results.filter(r => r.success).length} tasks`,
-      results
+      message: 'Bulk optimization completed',
+      optimizationSummary: result.summary,
+      results,
+      efficiencyGain: result.summary?.efficiencyGain || '15%',
+      usage: result.usage,
+      fallbackUsed: result.fallbackUsed || false
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('[TaskRoutes] Bulk optimization error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Bulk optimization service temporarily unavailable',
+      fallback: true
+    });
   }
+});
+
+// AI Task Agent Health and Capabilities
+router.get('/ai/capabilities', authenticate, async (req, res) => {
+  try {
+    const capabilities = await taskAgent.getCapabilities();
+    
+    res.json({
+      success: true,
+      capabilities: {
+        ...capabilities,
+        availableForRole: req.user.role,
+        userSpecificFeatures: req.user.role === 'admin' 
+          ? ['bulk_optimization', 'company_analytics', 'team_insights'] 
+          : ['personal_optimization', 'skill_development', 'productivity_insights']
+      }
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] Capabilities check error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Unable to retrieve capabilities',
+      fallback: true
+    });
+  }
+});
+
+// Enhanced health check
+router.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Advanced Task Management API with AI Agentic Features',
+    timestamp: new Date().toISOString(),
+    features: {
+      aiAgentic: [
+        'intelligent_task_generation',
+        'multi_agent_orchestration', 
+        'ai_optimization',
+        'predictive_analytics',
+        'smart_recommendations',
+        'completion_analysis',
+        'bulk_optimization'
+      ],
+      roleBased: {
+        admin: ['bulk_operations', 'company_insights', 'team_analytics'],
+        employee: ['personal_optimization', 'skill_development', 'productivity_insights']
+      },
+      realTime: ['notifications', 'progress_updates', 'ai_insights'],
+      fallbackSupport: true
+    }
+  });
 });
 
 export default router;

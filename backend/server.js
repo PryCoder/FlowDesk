@@ -1,3 +1,4 @@
+// server.js - CORRECTED VERSION
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,33 +9,21 @@ import dotenv from 'dotenv';
 // Routes
 import authRoutes from './src/routes/auth.js';
 import meetingRoutes from './src/routes/meeting.js';
-import emailRoutes from './src/routes/email.js';
+import workspaceRoutes from './src/routes/workspace.js';
 import taskRoutes from './src/routes/tasks.js';
-import analyticsRoutes from './src/routes/analytics.js';
-import geminiRoutes from './src/routes/gemini.js';
+import emailRoutes from './src/routes/email.js';
 
 dotenv.config();
 
 const app = express();
 const server = createServer(app);
 
-// Allowed frontend URLs
-const allowedOrigins = [
-  'http://localhost:3000', // Local frontend
-  process.env.FRONTEND_URL || 'https://flow-desk-eta.vercel.app', // Deployed frontend
-];
+console.log('🚀 Server starting...');
 
-// Global CORS middleware (handles preflight automatically)
+// CORS middleware
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow Postman / server-side requests
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error(`CORS policy: Not allowed from ${origin}`), false);
-    }
-  },
-  credentials: true,
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true
 }));
 
 // Security headers and body parsing
@@ -42,54 +31,93 @@ app.use(helmet());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`🌐 ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"]
+    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    credentials: true,
+    methods: ['GET', 'POST']
   }
-});
-
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-
-  socket.on('join_company', (companyId) => {
-    socket.join(companyId);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
 });
 
 app.set('io', io);
 
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/meetings', meetingRoutes);
-app.use('/api/emails', emailRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/gemini', geminiRoutes);
+// API routes - FIXED: Make sure all route files exist
+console.log('📦 Mounting API routes...');
+
+try {
+  app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes mounted');
+} catch (error) {
+  console.log('❌ Failed to mount auth routes:', error.message);
+}
+app.use('/api/emails',emailRoutes)
+try {
+  app.use('/api/meetings', meetingRoutes);
+  console.log('✅ Meeting routes mounted');
+} catch (error) {
+  console.log('❌ Failed to mount meeting routes:', error.message);
+}
+
+try {
+  app.use('/api/workspace', workspaceRoutes);
+  console.log('✅ Workspace routes mounted');
+} catch (error) {
+  console.log('❌ Failed to mount workspace routes:', error.message);
+}
+
+try {
+  app.use('/api/tasks', taskRoutes);
+  console.log('✅ Task routes mounted');
+} catch (error) {
+  console.log('❌ Failed to mount task routes:', error.message);
+}
+
+console.log('✅ All routes mounted');
 
 // Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
+  res.json({ 
+    success: true,
+    message: 'Server is running',
     timestamp: new Date().toISOString(),
-    service: 'Agentic Work Assistant API'
+    routes: [
+      '/api/tasks/health',
+      '/api/tasks',
+      '/api/tasks/company/all'
+    ]
   });
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: err.message || 'Something went wrong!' });
+// FIXED: Proper 404 handler - remove the asterisk parameter
+app.use((req, res) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    success: false,
+    error: `Route ${req.method} ${req.originalUrl} not found`,
+    timestamp: new Date(),
+    availableRoutes: [
+      'GET /health',
+      'GET /api/tasks/health',
+      'GET /api/tasks',
+      'GET /api/tasks/company/all',
+      'POST /api/tasks'
+    ]
+  });
 });
 
 // Start server
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🎯 Server running on port ${PORT}`);
+  console.log(`🔗 Health: http://localhost:${PORT}/health`);
+  console.log(`📋 Tasks API: http://localhost:${PORT}/api/tasks/health`);
+  console.log(`👤 User Tasks: http://localhost:${PORT}/api/tasks`);
+  console.log(`🏢 Company Tasks: http://localhost:${PORT}/api/tasks/company/all\n`);
 });

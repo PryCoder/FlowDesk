@@ -24,6 +24,7 @@ import { Settings } from "./pages/Settings";
 import Registration from "./pages/Registration";
 import GmailAuthPage from "./pages/g.tsx";
 import DashboardPage from "./pages/Dashboard";
+// import WorkspacePage from "./pages/Workspace.tsx";
 
 const queryClient = new QueryClient();
 
@@ -112,6 +113,16 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+               {/* <Route
+                path="/workspace"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <WorkspacePage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              /> */}
               <Route
                 path="/emails"
                 element={

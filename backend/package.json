@@ -13,8 +13,11 @@
   "dependencies": {
     "@google/genai": "^1.22.0",
     "@google/generative-ai": "^0.24.1",
-    "@langchain/langgraph": "^0.4.9",
+    "@langchain/community": "^1.0.3",
+    "@langchain/core": "^0.1.0",
+    "@langchain/openai": "^0.1.0",
     "@supabase/supabase-js": "^2.58.0",
+    "@tavily/core": "^0.5.13",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "chrono-node": "^2.9.0",
@@ -26,10 +29,11 @@
     "googleapis": "^161.0.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "langchain": "^0.3.35",
+    "langchain": "^0.1.0",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
+    "simple-peer": "^9.11.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
