@@ -3,43 +3,68 @@ import supabase from '../utils/supabaseClient.js';
 
 export class TaskService {
   constructor() {
-    this.taskStatuses = ['pending', 'in_progress', 'completed', 'blocked', 'cancelled'];
+    this.taskStatuses = ['pending', 'in_progress','review', 'completed', 'blocked','done', 'cancelled'];
   }
 
   // Task Creation and Management
-  async createTask(taskData, createdBy) {
-    try {
-      const { data: task, error } = await supabase
-        .from('tasks')
-        .insert({
-          company_id: taskData.companyId,
-          title: taskData.title,
-          description: taskData.description,
-          assigned_to: taskData.assignedTo,
-          created_by: createdBy,
-          priority: taskData.priority || 'medium',
-          status: 'pending',
-          deadline: taskData.deadline,
-          category: taskData.category,
-          estimated_hours: taskData.estimatedHours,
-          tags: taskData.tags || []
-        })
-        .select()
-        .single();
+  // In your TaskService.js - update the createTask method
+async createTask(taskData, createdBy) {
+  try {
+    console.log('🔍 [TaskService] createTask called with:', {
+      taskData,
+      createdBy
+    });
 
-      if (error) throw new Error(`Task creation failed: ${error.message}`);
+    // Debug the assigned_to value specifically
+    console.log('👤 [TaskService] assigned_to value:', taskData.assigned_to);
+    console.log('👤 [TaskService] assigned_to type:', typeof taskData.assigned_to);
 
-      // Generate AI analysis if requested
-      if (taskData.generateAIRecommendations) {
-        await this.generateTaskAnalysis(task.id);
-      }
+    const insertData = {
+      company_id: taskData.companyId,
+      title: taskData.title,
+      description: taskData.description,
+      assigned_to: taskData.assigned_to, // This should be the employee ID
+      created_by: createdBy,
+      priority: taskData.priority || 'medium',
+      status: 'pending',
+      deadline: taskData.deadline,
+      category: taskData.category,
+      estimated_hours: taskData.estimatedHours,
+      tags: taskData.tags || []
+    };
 
-      return task;
-    } catch (error) {
-      throw new Error(`Task Service - createTask: ${error.message}`);
+    console.log('📝 [TaskService] Inserting data:', insertData);
+
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ [TaskService] Supabase error:', error);
+      console.error('❌ [TaskService] Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw new Error(`Task creation failed: ${error.message}`);
     }
-  }
 
+    console.log('✅ [TaskService] Task created successfully:', task);
+
+    // Generate AI analysis if requested
+    if (taskData.generateAIRecommendations) {
+      await this.generateTaskAnalysis(task.id);
+    }
+
+    return task;
+  } catch (error) {
+    console.error('❌ [TaskService] Error in createTask:', error);
+    throw new Error(`Task Service - createTask: ${error.message}`);
+  }
+}
   async generateTaskAnalysis(taskId) {
     try {
       const task = await this.getTaskById(taskId);
@@ -82,6 +107,158 @@ export class TaskService {
     }
   }
 
+   // ==================== ENHANCED TASK ANALYTICS ====================
+
+async getUserTaskAnalytics(userId, timeframe = '30d') {
+  try {
+    const tasks = await this.getUserTasks(userId, { 
+      timeframe,
+      includeCompleted: true 
+    });
+
+    const analytics = {
+      basic: {
+        total: tasks.length,
+        completed: tasks.filter(t => t.status === 'completed').length,
+        inProgress: tasks.filter(t => t.status === 'in_progress').length,
+        pending: tasks.filter(t => t.status === 'pending').length,
+        overdue: tasks.filter(t => 
+          t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed'
+        ).length
+      },
+      advanced: {
+        completionRate: this.calculateCompletionRate(tasks),
+        averageCompletionTime: this.calculateAverageCompletionTime(tasks),
+        aiAdoptionRate: this.calculateAIAdoption(tasks),
+        priorityDistribution: this.groupBy(tasks, 'priority'),
+        categoryDistribution: this.groupBy(tasks, 'category'),
+        weeklyTrend: this.analyzeWeeklyTrend(tasks),
+        productivityScore: this.calculateProductivityScore(tasks)
+      },
+      predictive: {
+        estimatedWeeklyCapacity: this.estimateWeeklyCapacity(tasks),
+        riskFactors: this.identifyRiskFactors(tasks),
+        optimizationOpportunities: this.identifyOptimizationOpportunities(tasks)
+      }
+    };
+
+    return analytics;
+  } catch (error) {
+    console.error('[TaskService] Analytics error:', error.message);
+    throw new Error(`Task Service - getUserTaskAnalytics: ${error.message}`);
+  }
+}
+
+// ==================== ENHANCED ANALYTICS METHODS ====================
+
+calculateProductivityScore(tasks) {
+  if (!tasks.length) return 0;
+  
+  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const completionRate = (completedTasks.length / tasks.length) * 100;
+  
+  // Factor in timeliness
+  const onTimeTasks = completedTasks.filter(task => {
+    if (!task.completed_at || !task.deadline) return true;
+    return new Date(task.completed_at) <= new Date(task.deadline);
+  });
+  const timelinessRate = (onTimeTasks.length / completedTasks.length) * 100 || 0;
+  
+  // Factor in task complexity (using AI score if available)
+  const avgComplexity = completedTasks.reduce((sum, task) => 
+    sum + (task.task_score || 5), 0) / completedTasks.length || 5;
+  
+  return Math.round((completionRate * 0.4) + (timelinessRate * 0.4) + (avgComplexity * 2));
+}
+
+analyzeWeeklyTrend(tasks) {
+  const weeklyCompletion = Array(7).fill(0);
+  const completedTasks = tasks.filter(t => t.status === 'completed' && t.completed_at);
+  
+  completedTasks.forEach(task => {
+    const dayOfWeek = new Date(task.completed_at).getDay();
+    weeklyCompletion[dayOfWeek]++;
+  });
+  
+  return {
+    distribution: weeklyCompletion,
+    mostProductiveDay: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+      weeklyCompletion.indexOf(Math.max(...weeklyCompletion))
+    ],
+    leastProductiveDay: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+      weeklyCompletion.indexOf(Math.min(...weeklyCompletion))
+    ]
+  };
+}
+
+estimateWeeklyCapacity(tasks) {
+  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const avgTasksPerWeek = completedTasks.length / 4; // Assuming 4-week period
+  const avgHoursPerTask = completedTasks.reduce((sum, task) => 
+    sum + (task.actual_hours || task.estimated_hours || 4), 0) / completedTasks.length || 4;
+  
+  return {
+    estimatedTasks: Math.round(avgTasksPerWeek),
+    estimatedHours: Math.round(avgTasksPerWeek * avgHoursPerTask),
+    confidence: completedTasks.length > 10 ? 'high' : 'medium'
+  };
+}
+
+identifyRiskFactors(tasks) {
+  const risks = [];
+  
+  const overdueTasks = tasks.filter(t => 
+    t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed'
+  );
+  
+  if (overdueTasks.length > 0) {
+    risks.push(`${overdueTasks.length} overdue tasks affecting productivity`);
+  }
+  
+  const highPriorityPending = tasks.filter(t => 
+    t.priority === 'high' && t.status === 'pending'
+  );
+  
+  if (highPriorityPending.length > 2) {
+    risks.push(`High workload with ${highPriorityPending.length} high-priority pending tasks`);
+  }
+  
+  const recentCompletionRate = this.calculateCompletionRate(
+    tasks.filter(t => new Date(t.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+  );
+  
+  if (recentCompletionRate < 50) {
+    risks.push('Recent completion rate below 50% indicates potential bottlenecks');
+  }
+  
+  return risks.length > 0 ? risks : ['No significant risks identified'];
+}
+
+identifyOptimizationOpportunities(tasks) {
+  const opportunities = [];
+  
+  const tasksWithoutAI = tasks.filter(t => !t.ai_recommendations);
+  if (tasksWithoutAI.length > tasks.length * 0.5) {
+    opportunities.push('Enable AI insights for more tasks to improve planning');
+  }
+  
+  const tasksWithoutDeadlines = tasks.filter(t => !t.deadline && t.status !== 'completed');
+  if (tasksWithoutDeadlines.length > 0) {
+    opportunities.push(`Set deadlines for ${tasksWithoutDeadlines.length} tasks without due dates`);
+  }
+  
+  const longRunningTasks = tasks.filter(t => 
+    t.status === 'in_progress' && 
+    t.created_at && 
+    new Date(t.created_at) < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  );
+  
+  if (longRunningTasks.length > 0) {
+    opportunities.push(`Review ${longRunningTasks.length} long-running tasks for potential blockers`);
+  }
+  
+  return opportunities.length > 0 ? opportunities : ['Current task management practices are effective'];
+}
   // Task Retrieval
   async getUserTasks(userId, filters = {}) {
     try {
@@ -242,28 +419,52 @@ export class TaskService {
     }
   }
 
-  // Task Analytics
-  async getTaskAnalytics(userId, period = '30d') {
+  async generateTaskAnalysis(taskId) {
     try {
-      const tasks = await this.getUserTasks(userId, { period });
-
-      const analytics = {
-        total: tasks.length,
-        byStatus: this.groupBy(tasks, 'status'),
-        byPriority: this.groupBy(tasks, 'priority'),
-        byCategory: this.groupBy(tasks, 'category'),
-        completionRate: this.calculateCompletionRate(tasks),
-        averageCompletionTime: this.calculateAverageCompletionTime(tasks),
-        overdue: this.countOverdueTasks(tasks),
-        upcomingDeadlines: this.countUpcomingDeadlines(tasks),
-        aiAdoption: this.calculateAIAdoption(tasks)
+      const task = await this.getTaskById(taskId);
+      if (!task) throw new Error('Task not found');
+  
+      // Use analyzeTaskComplexity instead of process()
+      const analysis = await taskAgent.analyzeTaskComplexity({
+        task: {
+          title: task.title,
+          description: task.description,
+          deadline: task.deadline,
+          priority: task.priority,
+          assignedTo: task.assigned_to,
+          category: task.category,
+          estimatedHours: task.estimated_hours
+        }
+      });
+  
+      // Update task with AI analysis
+      const { data: updatedTask, error } = await supabase
+        .from('tasks')
+        .update({
+          ai_breakdown: analysis.breakdown,
+          ai_timeline: analysis.timeline,
+          ai_resources: analysis.resources,
+          ai_risks: analysis.risks,
+          ai_recommendations: analysis.recommendations,
+          ai_optimization: analysis.optimization,
+          task_score: analysis.taskScore,
+          last_analyzed: new Date().toISOString()
+        })
+        .eq('id', taskId)
+        .select()
+        .single();
+  
+      if (error) throw new Error(`Failed to update task with AI analysis: ${error.message}`);
+  
+      return {
+        task: updatedTask,
+        analysis: analysis
       };
-
-      return analytics;
     } catch (error) {
-      throw new Error(`Task Service - getTaskAnalytics: ${error.message}`);
+      throw new Error(`Task Service - generateTaskAnalysis: ${error.message}`);
     }
   }
+  
 
   async getCompanyTaskAnalytics(companyId, period = '30d') {
     try {

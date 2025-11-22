@@ -5,45 +5,49 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   Search,
-  Trash,
-  ArrowRight,
   BarChart3,
   User,
   X,
-  Filter,
   Calendar,
-  Clock,
   CheckCircle2,
   PlayCircle,
-  Eye,
-  Circle,
-  AlertCircle,
-  TrendingUp,
+  Brain,
   Users,
   Loader2,
   Sparkles,
-  Brain,
-  Zap,
-  Target,
-  Lightbulb,
-  Rocket,
-  Crown,
-  Star,
-  Gem,
-  Award,
-  Clock4,
   BrainCircuit,
+  Crown,
+  TrendingUp,
+  Lightbulb,
   LineChart,
-  Bot,
-  Shield,
-  Lock,
-  Unlock,
   Download,
-  Upload,
-  Settings,
   RefreshCw,
   Menu,
   MoreVertical,
+  Target,
+  Shield,
+  Circle,
+  AlertCircle,
+  Rocket,
+  Gem,
+  Star,
+  Zap,
+  Bot,
+  Lock,
+  Unlock,
+  Upload,
+  Settings,
+  Filter,
+  Clock,
+  Eye,
+  Trash,
+  ArrowRight,
+  Gauge,
+  TrendingDown,
+  Activity,
+  TargetIcon,
+  BarChart,
+  PieChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +58,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from "@/components/ui/card";
 import {
   Tabs,
@@ -85,7 +90,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+
+// Import the new components
+import KanbanBoard from "../components/layout/kanban";
+import TaskList from "../components/layout/Listing";
 
 const API_BASE = "http://localhost:3001/api/tasks";
 const USERS_API = "http://localhost:3001/api/auth";
@@ -96,7 +108,8 @@ const STORAGE_KEYS = {
   AI_RECOMMENDATIONS: 'ai_recommendations',
   USER_PREFERENCES: 'user_preferences',
   TASKS_CACHE: 'tasks_cache',
-  DASHBOARD_DATA: 'dashboard_data'
+  DASHBOARD_DATA: 'dashboard_data',
+  AI_OPTIMIZATIONS: 'ai_optimizations'
 };
 
 // Status mapping - Fixed to match backend
@@ -118,6 +131,23 @@ const REVERSE_STATUS_MAP = {
 
 // Valid backend statuses
 const VALID_BACKEND_STATUSES = ["pending", "in_progress", "completed", "blocked", "cancelled", "review"];
+
+// AI Intelligence Types
+const INTELLIGENCE_TYPES = [
+  { value: "strategic", label: "Strategic", icon: Target, description: "Long-term planning and vision", premium: true },
+  { value: "creative", label: "Creative", icon: Lightbulb, description: "Innovative and out-of-the-box thinking", premium: false },
+  { value: "analytical", label: "Analytical", icon: BarChart3, description: "Data-driven and systematic approach", premium: true },
+  { value: "technical", label: "Technical", icon: Zap, description: "Technical implementation focused", premium: false },
+  { value: "collaborative", label: "Collaborative", icon: Users, description: "Team coordination and communication", premium: true },
+];
+
+// Optimization Types
+const OPTIMIZATION_TYPES = [
+  { value: "efficiency", label: "Efficiency", icon: Zap, description: "Optimize for time and resource efficiency" },
+  { value: "quality", label: "Quality", icon: Gem, description: "Focus on quality and excellence" },
+  { value: "collaboration", label: "Collaboration", icon: Users, description: "Improve team collaboration" },
+  { value: "learning", label: "Learning", icon: Brain, description: "Focus on skill development" },
+];
 
 export default function TasksPage() {
   const { toast } = useToast();
@@ -168,6 +198,8 @@ export default function TasksPage() {
     notifications: true
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [optimizingTasks, setOptimizingTasks] = useState<Set<string>>(new Set());
+  const [taskOptimizations, setTaskOptimizations] = useState<Record<string, any>>({});
 
   // Initialize storage
   useEffect(() => {
@@ -180,11 +212,13 @@ export default function TasksPage() {
       const savedRecommendations = sessionStorage.getItem(STORAGE_KEYS.AI_RECOMMENDATIONS);
       const savedPreferences = localStorage.getItem(STORAGE_KEYS.USER_PREFERENCES);
       const savedDashboard = sessionStorage.getItem(STORAGE_KEYS.DASHBOARD_DATA);
+      const savedOptimizations = sessionStorage.getItem(STORAGE_KEYS.AI_OPTIMIZATIONS);
 
       if (savedPredictions) setAiPredictions(JSON.parse(savedPredictions));
       if (savedRecommendations) setAiRecommendations(JSON.parse(savedRecommendations));
       if (savedPreferences) setUserPreferences(JSON.parse(savedPreferences));
       if (savedDashboard) setAiDashboard(JSON.parse(savedDashboard));
+      if (savedOptimizations) setTaskOptimizations(JSON.parse(savedOptimizations));
     } catch (error) {
       console.error('Error loading from storage:', error);
     }
@@ -210,29 +244,176 @@ export default function TasksPage() {
     };
   }, []);
 
-  // Columns configuration
-  const columns = useMemo(() => [
-    { id: "todo", title: "To Do", icon: Circle, color: "bg-blue-500/20 border-blue-500/30 text-blue-300", backendStatus: "pending" },
-    { id: "in-progress", title: "In Progress", icon: PlayCircle, color: "bg-amber-500/20 border-amber-500/30 text-amber-300", backendStatus: "in_progress" },
-    { id: "review", title: "Review", icon: Eye, color: "bg-purple-500/20 border-purple-500/30 text-purple-300", backendStatus: "review" },
-    { id: "done", title: "Done", icon: CheckCircle2, color: "bg-green-500/20 border-green-500/30 text-green-300", backendStatus: "completed" },
-  ], []);
+  // ------------------ NEW AI API INTEGRATIONS ------------------
 
-  const priorityConfig = useMemo(() => ({
-    low: { color: "bg-green-500/20 text-green-300 border-green-500/30", label: "Low", icon: Circle },
-    medium: { color: "bg-amber-500/20 text-amber-300 border-amber-500/30", label: "Medium", icon: AlertCircle },
-    high: { color: "bg-red-500/20 text-red-300 border-red-500/30", label: "High", icon: Shield },
-  }), []);
+  // AI Task Optimization
+  const optimizeTask = useCallback(async (taskId: string, optimizationType = 'efficiency') => {
+    setOptimizingTasks(prev => new Set(prev).add(taskId));
+    
+    try {
+      const res = await fetch(`${API_BASE}/${taskId}/ai/optimize`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ optimizationType }),
+      });
 
-  const intelligenceTypes = useMemo(() => [
-    { value: "strategic", label: "Strategic", icon: Target, description: "Long-term planning and vision", premium: true },
-    { value: "creative", label: "Creative", icon: Lightbulb, description: "Innovative and out-of-the-box thinking", premium: false },
-    { value: "analytical", label: "Analytical", icon: BarChart3, description: "Data-driven and systematic approach", premium: true },
-    { value: "technical", label: "Technical", icon: Zap, description: "Technical implementation focused", premium: false },
-    { value: "collaborative", label: "Collaborative", icon: Users, description: "Team coordination and communication", premium: true },
-  ], []);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
 
-  // ------------------ Fetch Current User ------------------
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to optimize task");
+
+      // Store optimization results
+      setTaskOptimizations(prev => ({
+        ...prev,
+        [taskId]: data.optimization
+      }));
+
+      saveToStorage(STORAGE_KEYS.AI_OPTIMIZATIONS, {
+        ...taskOptimizations,
+        [taskId]: data.optimization
+      });
+
+      toast({
+        title: "⚡ Task Optimized",
+        description: `AI has optimized this task for ${optimizationType}`,
+      });
+
+      return data.optimization;
+    } catch (err: any) {
+      console.error("Error optimizing task:", err);
+      toast({
+        title: "Optimization Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+      return null;
+    } finally {
+      setOptimizingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
+    }
+  }, [getAuthHeaders, toast, saveToStorage, taskOptimizations]);
+
+  // Dynamic AI Predictions
+  const fetchAIPredictions = useCallback(async (timeframe = '30d', predictionType = 'completion') => {
+    try {
+      setLoading(true);
+      
+      const res = await fetch(
+        `${API_BASE}/ai/predictions/dynamic?timeframe=${timeframe}&predictionType=${predictionType}&includePatterns=true`,
+        { headers: getAuthHeaders() }
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch predictions");
+
+      setAiPredictions(data);
+      setShowAIPredictions(true);
+      
+      saveToStorage(STORAGE_KEYS.AI_PREDICTIONS, data);
+      
+      toast({
+        title: "📊 AI Predictions Generated",
+        description: "Dynamic predictions based on your work patterns",
+      });
+    } catch (err: any) {
+      console.error("Error fetching AI predictions:", err);
+      toast({
+        title: "Predictions Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [getAuthHeaders, saveToStorage, toast]);
+
+  // Personalized Recommendations
+  const fetchAIRecommendations = useCallback(async (type = 'adaptive', limit = 5) => {
+    try {
+      setLoading(true);
+      
+      const res = await fetch(
+        `${API_BASE}/ai/recommendations/personalized?type=${type}&limit=${limit}&includeSkills=true`,
+        { headers: getAuthHeaders() }
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch recommendations");
+
+      setAiRecommendations(data);
+      setShowAIRecommendations(true);
+      
+      saveToStorage(STORAGE_KEYS.AI_RECOMMENDATIONS, data);
+      
+      toast({
+        title: "💡 AI Recommendations",
+        description: "Personalized suggestions based on your profile",
+      });
+    } catch (err: any) {
+      console.error("Error fetching AI recommendations:", err);
+      toast({
+        title: "Recommendations Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [getAuthHeaders, saveToStorage, toast]);
+
+  // Intelligent Dashboard
+  const fetchAIDashboard = useCallback(async (timeframe = '30d') => {
+    try {
+      setLoading(true);
+      
+      const res = await fetch(
+        `${API_BASE}/ai/dashboard/intelligent?timeframe=${timeframe}&includeTrends=true&includeBenchmarks=true`,
+        { headers: getAuthHeaders() }
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch dashboard");
+
+      setAiDashboard(data);
+      setShowAIDashboard(true);
+      
+      saveToStorage(STORAGE_KEYS.DASHBOARD_DATA, data);
+      
+      toast({
+        title: "📈 AI Dashboard Generated",
+        description: "Intelligent insights into your productivity",
+      });
+    } catch (err: any) {
+      console.error("Error fetching AI dashboard:", err);
+      toast({
+        title: "Dashboard Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [getAuthHeaders, saveToStorage, toast]);
+
+  // ------------------ EXISTING FUNCTIONS (Updated) ------------------
+
   const fetchCurrentUser = useCallback(async () => {
     try {
       const res = await fetch(`${USERS_API}/current-user`, { 
@@ -261,7 +442,6 @@ export default function TasksPage() {
     }
   }, [getAuthHeaders, toast]);
 
-  // ------------------ Fetch Users (Admin) ------------------
   const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch(`${USERS_API}/company/employees`, { 
@@ -285,14 +465,12 @@ export default function TasksPage() {
     }
   }, [getAuthHeaders, toast]);
 
-  // ------------------ Fetch Tasks ------------------
   const fetchTasks = useCallback(async (adminStatus?: boolean) => {
     setLoading(true);
     try {
       const userIsAdmin = adminStatus !== undefined ? adminStatus : isAdmin;
-      const endpoint = userIsAdmin && selectedEmployee ? 
-        `${API_BASE}/employee/${selectedEmployee.id}` : 
-        `${API_BASE}`;
+      
+      const endpoint = userIsAdmin ? `${API_BASE}` : `${API_BASE}`;
       
       const res = await fetch(endpoint, { 
         headers: getAuthHeaders() 
@@ -306,15 +484,21 @@ export default function TasksPage() {
       if (!data.success) throw new Error(data.error || "Unable to fetch tasks");
       
       const tasksData = data.tasks || [];
-      setTasks(tasksData);
       
-      // Save to cache
+      let filteredTasks = tasksData;
+      if (!userIsAdmin) {
+        filteredTasks = tasksData.filter((task: any) => 
+          task.assigned_to === currentUserId
+        );
+      }
+      
+      setTasks(filteredTasks);
+      
       if (userPreferences.autoSave) {
-        saveToStorage(STORAGE_KEYS.TASKS_CACHE, tasksData);
+        saveToStorage(STORAGE_KEYS.TASKS_CACHE, filteredTasks);
       }
     } catch (err: any) {
       console.error("Error fetching tasks:", err);
-      // Try to load from cache
       const cachedTasks = localStorage.getItem(STORAGE_KEYS.TASKS_CACHE);
       if (cachedTasks) {
         setTasks(JSON.parse(cachedTasks));
@@ -333,9 +517,8 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, selectedEmployee, getAuthHeaders, userPreferences.autoSave, saveToStorage, toast]);
+  }, [isAdmin, currentUserId, getAuthHeaders, userPreferences.autoSave, saveToStorage, toast]);
 
-  // ------------------ AI Task Generation ------------------
   const generateAITask = useCallback(async () => {
     if (!aiForm.description.trim()) {
       toast({
@@ -378,133 +561,6 @@ export default function TasksPage() {
     }
   }, [aiForm, getAuthHeaders, toast]);
 
-  // ------------------ AI Predictions ------------------
-  const fetchAIPredictions = useCallback(async () => {
-    try {
-      // Try cache first
-      const cached = sessionStorage.getItem(STORAGE_KEYS.AI_PREDICTIONS);
-      if (cached && userPreferences.autoSave) {
-        setAiPredictions(JSON.parse(cached));
-        setShowAIPredictions(true);
-        toast({
-          title: "📊 Cached Predictions",
-          description: "Loaded predictions from session storage",
-        });
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/ai/predictions?timeframe=30d&predictionType=completion`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to fetch predictions");
-
-      setAiPredictions(data.predictions);
-      setShowAIPredictions(true);
-      
-      // Save to session storage
-      saveToStorage(STORAGE_KEYS.AI_PREDICTIONS, data.predictions);
-      
-      toast({
-        title: "📊 AI Predictions",
-        description: "Task completion predictions generated",
-      });
-    } catch (err: any) {
-      console.error("Error fetching AI predictions:", err);
-      toast({
-        title: "Predictions Failed",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  }, [getAuthHeaders, userPreferences.autoSave, saveToStorage, toast]);
-
-  // ------------------ AI Recommendations ------------------
-  const fetchAIRecommendations = useCallback(async () => {
-    try {
-      // Try cache first
-      const cached = sessionStorage.getItem(STORAGE_KEYS.AI_RECOMMENDATIONS);
-      if (cached && userPreferences.autoSave) {
-        setAiRecommendations(JSON.parse(cached));
-        setShowAIRecommendations(true);
-        toast({
-          title: "💡 Cached Recommendations",
-          description: "Loaded recommendations from session storage",
-        });
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/ai/recommendations?type=similar&limit=5`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to fetch recommendations");
-
-      setAiRecommendations(data.recommendations);
-      setShowAIRecommendations(true);
-      
-      // Save to session storage
-      saveToStorage(STORAGE_KEYS.AI_RECOMMENDATIONS, data.recommendations);
-      
-      toast({
-        title: "💡 AI Recommendations",
-        description: "Personalized task recommendations generated",
-      });
-    } catch (err: any) {
-      console.error("Error fetching AI recommendations:", err);
-      toast({
-        title: "Recommendations Failed",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  }, [getAuthHeaders, userPreferences.autoSave, saveToStorage, toast]);
-
-  // ------------------ AI Dashboard ------------------
-  const fetchAIDashboard = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}`, {
-        headers: getAuthHeaders(),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to fetch dashboard");
-
-      setAiDashboard(data.aiDashboard);
-      setShowAIDashboard(true);
-      
-      // Save to session storage
-      saveToStorage(STORAGE_KEYS.DASHBOARD_DATA, data.aiDashboard);
-      
-      toast({
-        title: "📈 AI Dashboard",
-        description: "Personal productivity insights generated",
-      });
-    } catch (err: any) {
-      console.error("Error fetching AI dashboard:", err);
-      toast({
-        title: "Dashboard Failed",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  }, [getAuthHeaders, saveToStorage, toast]);
-
-  // ------------------ Open Task Modal ------------------
   const openTaskModal = useCallback((employee: any) => {
     setSelectedEmployee(employee);
     setTaskForm({
@@ -519,10 +575,10 @@ export default function TasksPage() {
       autoOptimize: false,
     });
     setShowTaskModal(true);
+    setShowUserList(false);
     setMobileMenuOpen(false);
   }, []);
 
-  // ------------------ Create Task ------------------
   const createTask = useCallback(async () => {
     if (!currentUserId || !selectedEmployee) return;
 
@@ -569,7 +625,6 @@ export default function TasksPage() {
     }
   }, [currentUserId, selectedEmployee, taskForm, getAuthHeaders, toast, isAdmin, fetchTasks]);
 
-  // ------------------ Use AI Generated Task ------------------
   const useAIGeneratedTask = useCallback(() => {
     if (aiGeneratedTask && selectedEmployee) {
       setTaskForm({
@@ -590,7 +645,6 @@ export default function TasksPage() {
     }
   }, [aiGeneratedTask, selectedEmployee]);
 
-  // ------------------ Update Status ------------------
   const updateStatus = useCallback(async (taskId: string, frontendStatus: string) => {
     try {
       const backendStatus = STATUS_MAP[frontendStatus as keyof typeof STATUS_MAP];
@@ -627,7 +681,6 @@ export default function TasksPage() {
     }
   }, [getAuthHeaders, toast, isAdmin, fetchTasks]);
 
-  // ------------------ Delete Task ------------------
   const deleteTask = useCallback(async (taskId: string) => {
     if (!confirm("Are you sure you want to delete this task?")) return;
     try {
@@ -658,55 +711,24 @@ export default function TasksPage() {
     }
   }, [getAuthHeaders, toast, isAdmin, fetchTasks]);
 
-  // ------------------ AI Task Optimization ------------------
-  const optimizeTask = useCallback(async (taskId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/${taskId}/ai/optimize`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ optimizationType: "efficiency" }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to optimize task");
-
-      toast({
-        title: "⚡ Task Optimized",
-        description: "AI has provided optimization suggestions",
-      });
-      fetchTasks(isAdmin);
-    } catch (err: any) {
-      console.error("Error optimizing task:", err);
-      toast({
-        title: "Optimization Failed",
-        description: err.message,
-        variant: "destructive",
-      });
-    }
-  }, [getAuthHeaders, toast, isAdmin, fetchTasks]);
-
-  // ------------------ Clear Cache ------------------
   const clearCache = useCallback(() => {
     sessionStorage.clear();
     localStorage.removeItem(STORAGE_KEYS.TASKS_CACHE);
     localStorage.removeItem(STORAGE_KEYS.USER_PREFERENCES);
+    setTaskOptimizations({});
     toast({
       title: "🔄 Cache Cleared",
       description: "All cached data has been cleared",
     });
   }, [toast]);
 
-  // ------------------ Export Data ------------------
   const exportData = useCallback(() => {
     const data = {
       tasks,
       predictions: aiPredictions,
       recommendations: aiRecommendations,
       dashboard: aiDashboard,
+      optimizations: taskOptimizations,
       exportedAt: new Date().toISOString()
     };
     
@@ -724,9 +746,10 @@ export default function TasksPage() {
       title: "📤 Data Exported",
       description: "All task data has been exported",
     });
-  }, [tasks, aiPredictions, aiRecommendations, aiDashboard, toast]);
+  }, [tasks, aiPredictions, aiRecommendations, aiDashboard, taskOptimizations, toast]);
 
-  // ------------------ Initialization ------------------
+  // ------------------ INITIALIZATION ------------------
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -747,42 +770,32 @@ export default function TasksPage() {
     init();
   }, [fetchCurrentUser, fetchUsers, fetchTasks]);
 
-  // ------------------ Task Filtering ------------------
+  // ------------------ UTILITY FUNCTIONS ------------------
+
   const getTasksByStatus = useCallback((status: string) => {
     return tasks.filter(task => {
       const mappedStatus = REVERSE_STATUS_MAP[task.status as keyof typeof REVERSE_STATUS_MAP] || "todo";
-      const visibleToUser = isAdmin || task.assigned_to === currentUserId || task.created_by === currentUserId;
       const priorityMatch = filterPriority === "all" || task.priority === filterPriority;
       const searchMatch = task.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          task.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      return mappedStatus === status && visibleToUser && priorityMatch && searchMatch;
+      return mappedStatus === status && priorityMatch && searchMatch;
     });
-  }, [tasks, isAdmin, currentUserId, filterPriority, searchQuery]);
+  }, [tasks, filterPriority, searchQuery]);
 
-  const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
-      const visibleToUser = isAdmin || task.assigned_to === currentUserId || task.created_by === currentUserId;
-      const priorityMatch = filterPriority === "all" || task.priority === filterPriority;
-      const searchMatch = task.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                       task.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      return visibleToUser && priorityMatch && searchMatch;
-    });
-  }, [tasks, isAdmin, currentUserId, filterPriority, searchQuery]);
-
-  // Get user initials for avatar
   const getUserInitials = useCallback((user: any) => {
     return `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase();
   }, []);
 
-  // Get assignee name for task display
   const getAssigneeName = useCallback((task: any) => {
     if (task.assignee) {
       return `${task.assignee.first_name} ${task.assignee.last_name}`;
     }
+    if (task.assigned_to_user) {
+      return `${task.assigned_to_user.first_name} ${task.assigned_to_user.last_name}`;
+    }
     return "Unassigned";
   }, []);
 
-  // Stats for dashboard
   const stats = useMemo(() => {
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(task => task.status === 'completed').length;
@@ -791,6 +804,341 @@ export default function TasksPage() {
 
     return { totalTasks, completedTasks, inProgressTasks, aiEnhancedTasks };
   }, [tasks]);
+
+  // ------------------ AI MODALS COMPONENTS ------------------
+
+  const AIPredictionsModal = () => (
+    <Dialog open={showAIPredictions} onOpenChange={setShowAIPredictions}>
+      <DialogContent className="bg-slate-800 border-slate-700 max-w-4xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            <TrendingUp className="w-5 h-5 text-blue-400" /> AI Predictions & Analytics
+          </DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Intelligent predictions based on your work patterns and task history
+          </DialogDescription>
+        </DialogHeader>
+        
+        {aiPredictions ? (
+          <div className="space-y-6">
+            {/* Prediction Overview */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-green-400" />
+                  Prediction Overview
+                </CardTitle>
+                <CardDescription>
+                  Confidence Score: {aiPredictions.confidence || '85%'} • Dynamic: {aiPredictions.dynamic ? 'Yes' : 'No'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-slate-600/30 rounded-lg">
+                    <div className="text-2xl font-bold text-white">{aiPredictions.predictedCompletionRate || '78%'}</div>
+                    <div className="text-sm text-slate-400">Completion Rate</div>
+                  </div>
+                  <div className="text-center p-4 bg-slate-600/30 rounded-lg">
+                    <div className="text-2xl font-bold text-white">{aiPredictions.estimatedProductivity || '+12%'}</div>
+                    <div className="text-sm text-slate-400">Productivity Gain</div>
+                  </div>
+                  <div className="text-center p-4 bg-slate-600/30 rounded-lg">
+                    <div className="text-2xl font-bold text-white">{aiPredictions.riskTasks || '2'}</div>
+                    <div className="text-sm text-slate-400">At-Risk Tasks</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Timeline Predictions */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-purple-400" />
+                  Timeline Forecast
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {aiPredictions.timelinePredictions?.map((prediction: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-600/30 rounded-lg">
+                      <div>
+                        <div className="font-medium text-white">{prediction.period}</div>
+                        <div className="text-sm text-slate-400">{prediction.description}</div>
+                      </div>
+                      <Badge variant={prediction.confidence > 70 ? "default" : "secondary"}>
+                        {prediction.confidence}% confidence
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Actionable Insights */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Lightbulb className="w-5 h-5 text-amber-400" />
+                  Actionable Insights
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {aiPredictions.insights?.map((insight: any, index: number) => (
+                    <div key={index} className="flex items-start gap-3 p-3 bg-slate-600/30 rounded-lg">
+                      <TargetIcon className="w-4 h-4 text-green-400 mt-1 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-white">{insight.title}</div>
+                        <div className="text-sm text-slate-400 mt-1">{insight.description}</div>
+                        {insight.impact && (
+                          <Badge variant="outline" className="mt-2">
+                            Impact: {insight.impact}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-400 mx-auto mb-4" />
+            <p className="text-slate-400">Loading predictions...</p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  const AIRecommendationsModal = () => (
+    <Dialog open={showAIRecommendations} onOpenChange={setShowAIRecommendations}>
+      <DialogContent className="bg-slate-800 border-slate-700 max-w-4xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            <Lightbulb className="w-5 h-5 text-amber-400" /> Personalized AI Recommendations
+          </DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Smart suggestions tailored to your work style and preferences
+          </DialogDescription>
+        </DialogHeader>
+        
+        {aiRecommendations ? (
+          <div className="space-y-6">
+            {/* Recommendation Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="bg-slate-700/50 border-slate-600">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-bold text-white">{aiRecommendations.relevanceScore || '92%'}</div>
+                      <div className="text-sm text-slate-400">Relevance Score</div>
+                    </div>
+                    <TrendingUp className="w-8 h-8 text-green-400" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-700/50 border-slate-600">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-bold text-white">{aiRecommendations.personalizationLevel || 'High'}</div>
+                      <div className="text-sm text-slate-400">Personalization</div>
+                    </div>
+                    <User className="w-8 h-8 text-blue-400" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Task Recommendations */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white">Recommended Tasks</CardTitle>
+                <CardDescription>Based on your skills and work patterns</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {aiRecommendations.recommendations?.taskSuggestions?.map((suggestion: any, index: number) => (
+                    <div key={index} className="p-4 bg-slate-600/30 rounded-lg border border-slate-500/30">
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-semibold text-white">{suggestion.title}</h4>
+                        <Badge variant={suggestion.priority === 'high' ? 'destructive' : 'secondary'}>
+                          {suggestion.priority}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-slate-300 mb-3">{suggestion.description}</p>
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>Estimated: {suggestion.estimatedHours}h</span>
+                        <span>Skill Match: {suggestion.skillMatch}%</span>
+                        <Button size="sm" variant="outline" className="h-7 text-xs">
+                          <Plus className="w-3 h-3 mr-1" /> Create
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Skill Development */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white">Skill Development</CardTitle>
+                <CardDescription>Recommended skills to enhance your productivity</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {aiRecommendations.recommendations?.skillDevelopment?.map((skill: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-600/30 rounded-lg">
+                      <div>
+                        <div className="font-medium text-white">{skill.name}</div>
+                        <div className="text-sm text-slate-400">{skill.reason}</div>
+                      </div>
+                      <Badge variant="outline">{skill.level}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-amber-400 mx-auto mb-4" />
+            <p className="text-slate-400">Loading recommendations...</p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  const AIDashboardModal = () => (
+    <Dialog open={showAIDashboard} onOpenChange={setShowAIDashboard}>
+      <DialogContent className="bg-slate-800 border-slate-700 max-w-6xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            <LineChart className="w-5 h-5 text-green-400" /> Intelligent Productivity Dashboard
+          </DialogTitle>
+          <DialogDescription className="text-slate-400">
+            Comprehensive AI-powered insights into your work patterns and productivity
+          </DialogDescription>
+        </DialogHeader>
+        
+        {aiDashboard ? (
+          <div className="space-y-6">
+            {/* Key Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="bg-slate-700/50 border-slate-600">
+                <CardContent className="p-4">
+                  <div className="text-2xl font-bold text-white">{aiDashboard.metrics?.efficiency || '87%'}</div>
+                  <div className="text-sm text-slate-400">Efficiency Score</div>
+                  <TrendingUp className="w-4 h-4 text-green-400 mt-1" />
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-700/50 border-slate-600">
+                <CardContent className="p-4">
+                  <div className="text-2xl font-bold text-white">{aiDashboard.metrics?.focusTime || '6.2h'}</div>
+                  <div className="text-sm text-slate-400">Avg Focus Time</div>
+                  <Clock className="w-4 h-4 text-blue-400 mt-1" />
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-700/50 border-slate-600">
+                <CardContent className="p-4">
+                  <div className="text-2xl font-bold text-white">{aiDashboard.metrics?.completionRate || '94%'}</div>
+                  <div className="text-sm text-slate-400">Completion Rate</div>
+                  <CheckCircle2 className="w-4 h-4 text-green-400 mt-1" />
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-700/50 border-slate-600">
+                <CardContent className="p-4">
+                  <div className="text-2xl font-bold text-white">{aiDashboard.metrics?.aiAdoption || '78%'}</div>
+                  <div className="text-sm text-slate-400">AI Adoption</div>
+                  <Brain className="w-4 h-4 text-purple-400 mt-1" />
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Productivity Trends */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white">Productivity Trends</CardTitle>
+                <CardDescription>Your performance over the last 30 days</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {aiDashboard.trends?.map((trend: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between">
+                      <span className="text-slate-300">{trend.period}</span>
+                      <div className="flex items-center gap-4">
+                        <Progress value={trend.value} className="w-32" />
+                        <span className="text-white font-medium">{trend.value}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Work Pattern Analysis */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white">Work Pattern Analysis</CardTitle>
+                <CardDescription>AI insights into your working habits</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {aiDashboard.patterns?.map((pattern: any, index: number) => (
+                    <div key={index} className="p-4 bg-slate-600/30 rounded-lg">
+                      <div className="flex items-center gap-3 mb-2">
+                        <pattern.icon className="w-5 h-5 text-blue-400" />
+                        <h4 className="font-semibold text-white">{pattern.title}</h4>
+                      </div>
+                      <p className="text-sm text-slate-300">{pattern.insight}</p>
+                      <div className="mt-2">
+                        <Badge variant={pattern.impact === 'positive' ? 'default' : 'secondary'}>
+                          {pattern.impact}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Optimization Opportunities */}
+            <Card className="bg-slate-700/50 border-slate-600">
+              <CardHeader>
+                <CardTitle className="text-white">Optimization Opportunities</CardTitle>
+                <CardDescription>Areas where AI can help improve your workflow</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {aiDashboard.optimizations?.map((optimization: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-600/30 rounded-lg">
+                      <div>
+                        <div className="font-medium text-white">{optimization.area}</div>
+                        <div className="text-sm text-slate-400">{optimization.suggestion}</div>
+                      </div>
+                      <Badge variant="outline" className="bg-green-500/20 text-green-300">
+                        +{optimization.potentialGain}%
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-green-400 mx-auto mb-4" />
+            <p className="text-slate-400">Loading dashboard data...</p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 
   // Mobile menu actions
   const MobileActionsMenu = () => (
@@ -803,13 +1151,13 @@ export default function TasksPage() {
       <DropdownMenuContent align="end" className="w-56 bg-slate-800 border-slate-700">
         {isAdmin && (
           <>
-            <DropdownMenuItem onClick={fetchAIPredictions} className="text-slate-300">
+            <DropdownMenuItem onClick={() => fetchAIPredictions()} className="text-slate-300">
               <TrendingUp className="w-4 h-4 mr-2" /> AI Predictions
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={fetchAIRecommendations} className="text-slate-300">
+            <DropdownMenuItem onClick={() => fetchAIRecommendations()} className="text-slate-300">
               <Lightbulb className="w-4 h-4 mr-2" /> AI Recommendations
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={fetchAIDashboard} className="text-slate-300">
+            <DropdownMenuItem onClick={() => fetchAIDashboard()} className="text-slate-300">
               <LineChart className="w-4 h-4 mr-2" /> AI Dashboard
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowAIModal(true)} className="text-slate-300">
@@ -818,6 +1166,7 @@ export default function TasksPage() {
             <DropdownMenuItem onClick={() => setShowUserList(true)} className="text-slate-300">
               <Plus className="w-4 h-4 mr-2" /> Create Task
             </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-slate-600" />
           </>
         )}
         <DropdownMenuItem onClick={exportData} className="text-slate-300">
@@ -833,14 +1182,14 @@ export default function TasksPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <motion.div 
-        className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6"
+        className="p-4 sm:p-6 space-y-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
-          <div className="space-y-1 sm:space-y-2 flex-1 min-w-0">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="space-y-2 flex-1 min-w-0">
             <motion.h1 
               className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent flex items-center gap-2 sm:gap-3 flex-wrap"
               initial={{ y: -20, opacity: 0 }}
@@ -871,7 +1220,7 @@ export default function TasksPage() {
                 transition={{ delay: 0.2 }}
               >
                 <Button 
-                  onClick={fetchAIPredictions}
+                  onClick={() => fetchAIPredictions()}
                   variant="outline" 
                   size="sm"
                   className="bg-slate-800/50 border-slate-700 hover:bg-slate-700/50"
@@ -879,7 +1228,7 @@ export default function TasksPage() {
                   <TrendingUp className="w-4 h-4 mr-2" /> Predictions
                 </Button>
                 <Button 
-                  onClick={fetchAIRecommendations}
+                  onClick={() => fetchAIRecommendations()}
                   variant="outline" 
                   size="sm"
                   className="bg-slate-800/50 border-slate-700 hover:bg-slate-700/50"
@@ -887,7 +1236,7 @@ export default function TasksPage() {
                   <Lightbulb className="w-4 h-4 mr-2" /> Recommendations
                 </Button>
                 <Button 
-                  onClick={fetchAIDashboard}
+                  onClick={() => fetchAIDashboard()}
                   variant="outline" 
                   size="sm"
                   className="bg-slate-800/50 border-slate-700 hover:bg-slate-700/50"
@@ -927,7 +1276,7 @@ export default function TasksPage() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {intelligenceTypes.map(type => (
+                              {INTELLIGENCE_TYPES.map(type => (
                                 <SelectItem key={type.value} value={type.value}>
                                   <div className="flex items-center gap-2 justify-between w-full">
                                     <div className="flex items-center gap-2">
@@ -1003,28 +1352,9 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* AI Dialogs - Same as before but with responsive classes */}
-        <Dialog open={showAIPredictions} onOpenChange={setShowAIPredictions}>
-          <DialogContent className="bg-slate-800 border-slate-700 max-w-2xl w-[95vw] sm:w-full">
-            {/* ... AI Predictions Content ... */}
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showAIRecommendations} onOpenChange={setShowAIRecommendations}>
-          <DialogContent className="bg-slate-800 border-slate-700 max-w-2xl w-[95vw] sm:w-full">
-            {/* ... AI Recommendations Content ... */}
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showAIDashboard} onOpenChange={setShowAIDashboard}>
-          <DialogContent className="bg-slate-800 border-slate-700 max-w-4xl w-[95vw] sm:w-full">
-            {/* ... AI Dashboard Content ... */}
-          </DialogContent>
-        </Dialog>
-
         {/* Stats Cards */}
         <motion.div 
-          className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
@@ -1034,9 +1364,9 @@ export default function TasksPage() {
               <div className="p-2 sm:p-3 rounded-full bg-blue-500/20">
                 <Users className="w-4 h-4 sm:w-6 sm:h-6 text-blue-400" />
               </div>
-              <div className="min-w-0">
-                <p className="text-lg sm:text-2xl font-bold text-white truncate">{stats.totalTasks}</p>
-                <p className="text-xs sm:text-sm text-slate-400 truncate">Total Tasks</p>
+              <div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{stats.totalTasks}</p>
+                <p className="text-xs sm:text-sm text-slate-400">Total Tasks</p>
               </div>
             </CardContent>
           </Card>
@@ -1046,9 +1376,9 @@ export default function TasksPage() {
               <div className="p-2 sm:p-3 rounded-full bg-amber-500/20">
                 <PlayCircle className="w-4 h-4 sm:w-6 sm:h-6 text-amber-400" />
               </div>
-              <div className="min-w-0">
-                <p className="text-lg sm:text-2xl font-bold text-white truncate">{stats.inProgressTasks}</p>
-                <p className="text-xs sm:text-sm text-slate-400 truncate">In Progress</p>
+              <div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{stats.inProgressTasks}</p>
+                <p className="text-xs sm:text-sm text-slate-400">In Progress</p>
               </div>
             </CardContent>
           </Card>
@@ -1058,9 +1388,9 @@ export default function TasksPage() {
               <div className="p-2 sm:p-3 rounded-full bg-green-500/20">
                 <CheckCircle2 className="w-4 h-4 sm:w-6 sm:h-6 text-green-400" />
               </div>
-              <div className="min-w-0">
-                <p className="text-lg sm:text-2xl font-bold text-white truncate">{stats.completedTasks}</p>
-                <p className="text-xs sm:text-sm text-slate-400 truncate">Completed</p>
+              <div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{stats.completedTasks}</p>
+                <p className="text-xs sm:text-sm text-slate-400">Completed</p>
               </div>
             </CardContent>
           </Card>
@@ -1070,9 +1400,9 @@ export default function TasksPage() {
               <div className="p-2 sm:p-3 rounded-full bg-purple-500/20">
                 <Brain className="w-4 h-4 sm:w-6 sm:h-6 text-purple-400" />
               </div>
-              <div className="min-w-0">
-                <p className="text-lg sm:text-2xl font-bold text-white truncate">{stats.aiEnhancedTasks}</p>
-                <p className="text-xs sm:text-sm text-slate-400 truncate">AI Enhanced</p>
+              <div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{stats.aiEnhancedTasks}</p>
+                <p className="text-xs sm:text-sm text-slate-400">AI Enhanced</p>
               </div>
             </CardContent>
           </Card>
@@ -1089,7 +1419,7 @@ export default function TasksPage() {
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-400" /> AI Generated Task
               </h3>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 text-xs">
                   {aiForm.intelligenceType}
                 </Badge>
@@ -1109,8 +1439,8 @@ export default function TasksPage() {
                   <ul className="text-xs sm:text-sm text-slate-300 space-y-1">
                     {aiGeneratedTask.objectives.map((obj: string, index: number) => (
                       <li key={index} className="flex items-center gap-2">
-                        <Target className="w-3 h-3 text-green-400 flex-shrink-0" />
-                        <span className="flex-1">{obj}</span>
+                        <Target className="w-3 h-3 text-green-400" />
+                        {obj}
                       </li>
                     ))}
                   </ul>
@@ -1119,7 +1449,7 @@ export default function TasksPage() {
               {aiGeneratedTask.ai_insights && (
                 <div className="bg-slate-800/50 rounded-lg p-3">
                   <p className="text-xs sm:text-sm font-medium text-slate-400 mb-2">AI Insights:</p>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
                     <div>
                       <span className="text-slate-500">Complexity: </span>
                       <span className="text-white">{aiGeneratedTask.ai_insights.complexity_score}/10</span>
@@ -1131,7 +1461,7 @@ export default function TasksPage() {
                   </div>
                 </div>
               )}
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Button onClick={useAIGeneratedTask} size="sm" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
                   <Rocket className="w-4 h-4 mr-2" /> Use This Task
                 </Button>
@@ -1160,7 +1490,7 @@ export default function TasksPage() {
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <h2 className="text-lg sm:text-xl font-semibold text-white">Select Employee to Assign Task</h2>
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-3">
                   <Badge variant="secondary" className="bg-slate-700 text-slate-300 text-xs">
                     <Users className="w-3 h-3 mr-1" /> {users.length} employees
                   </Badge>
@@ -1170,14 +1500,14 @@ export default function TasksPage() {
                     onClick={exportData}
                     className="border-green-600 text-green-400 hover:bg-green-600/20 text-xs"
                   >
-                    <Download className="w-3 h-3 mr-1 sm:mr-2" /> Export
+                    <Download className="w-3 h-3 mr-1" /> Export
                   </Button>
                 </div>
               </div>
               {users.length === 0 ? (
-                <p className="text-slate-400 text-center py-6 sm:py-8">No employees found.</p>
+                <p className="text-slate-400 text-center py-8">No employees found.</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {users.map((user) => (
                     <motion.div
                       key={user.id}
@@ -1188,15 +1518,15 @@ export default function TasksPage() {
                         onClick={() => openTaskModal(user)} 
                         className="cursor-pointer bg-slate-800/50 border-slate-700 hover:bg-slate-700/50 transition-all duration-200 backdrop-blur-sm"
                       >
-                        <CardContent className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4">
+                        <CardContent className="flex items-center gap-3 p-3 sm:p-4">
                           <Avatar className="h-8 w-8 sm:h-10 sm:w-10 border border-slate-600">
                             <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs sm:text-sm">
                               {getUserInitials(user)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-white text-sm truncate">{user.first_name} {user.last_name}</p>
-                            <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                            <p className="font-medium text-white text-sm sm:text-base truncate">{user.first_name} {user.last_name}</p>
+                            <p className="text-xs sm:text-sm text-slate-400 truncate">{user.email}</p>
                             {user.department && (
                               <p className="text-xs text-slate-500 truncate">{user.department}</p>
                             )}
@@ -1218,7 +1548,7 @@ export default function TasksPage() {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input 
               className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
@@ -1229,7 +1559,7 @@ export default function TasksPage() {
           </div>
           <div className="flex gap-2">
             <select 
-              className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md text-white text-sm focus:ring-2 focus:ring-blue-500/50 flex-1 sm:flex-none"
+              className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md text-white focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base flex-1 sm:flex-none"
               value={filterPriority}
               onChange={(e) => setFilterPriority(e.target.value)}
             >
@@ -1242,9 +1572,9 @@ export default function TasksPage() {
               variant="outline"
               size="sm"
               onClick={clearCache}
-              className="border-slate-600 text-slate-300 hover:bg-slate-700/50 hidden sm:flex"
+              className="border-slate-600 text-slate-300 hover:bg-slate-700/50 text-xs sm:text-sm"
             >
-              <RefreshCw className="w-4 h-4 mr-2" /> Clear Cache
+              <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Clear Cache
             </Button>
           </div>
         </motion.div>
@@ -1252,9 +1582,9 @@ export default function TasksPage() {
         {/* Loading State */}
         {loading ? (
           <div className="flex justify-center items-center p-8 sm:p-12">
-            <div className="text-center space-y-3 sm:space-y-4">
-              <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-blue-400 mx-auto" />
-              <p className="text-slate-400 text-sm sm:text-base">Loading tasks...</p>
+            <div className="text-center space-y-4">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-400 mx-auto" />
+              <p className="text-slate-400">Loading tasks...</p>
             </div>
           </div>
         ) : (
@@ -1263,7 +1593,7 @@ export default function TasksPage() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4 sm:space-y-6">
+            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
               <TabsList className="bg-slate-800/50 border border-slate-700 p-1 backdrop-blur-sm w-full sm:w-auto">
                 <TabsTrigger 
                   value="kanban" 
@@ -1280,396 +1610,180 @@ export default function TasksPage() {
               </TabsList>
 
               {/* Kanban Board */}
-              <TabsContent value="kanban" className="space-y-4 sm:space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-                  {columns.map((col) => {
-                    const IconComponent = col.icon;
-                    const tasksInColumn = getTasksByStatus(col.id);
-                    
-                    return (
-                      <motion.div
-                        key={col.id}
-                        layout
-                        className="flex flex-col h-full"
-                      >
-                        <Card className={`border-2 ${col.color} backdrop-blur-sm flex-1 flex flex-col min-h-[400px] sm:min-h-[500px]`}>
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center gap-2">
-                              <IconComponent className="w-4 h-4 sm:w-5 sm:h-5" />
-                              <CardTitle className="text-base sm:text-lg font-semibold">{col.title}</CardTitle>
-                            </div>
-                            <CardDescription className="text-slate-300 text-xs sm:text-sm">
-                              {tasksInColumn.length} task{tasksInColumn.length !== 1 ? 's' : ''}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent className="flex-1 space-y-2 sm:space-y-3 pb-3 sm:pb-4 overflow-y-auto">
-                            <AnimatePresence>
-                              {tasksInColumn.map((task, index) => (
-                                <motion.div
-                                  key={task.id}
-                                  layout
-                                  initial={{ opacity: 0, scale: 0.9 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.9 }}
-                                  transition={{ delay: index * 0.1 }}
-                                  className="p-3 sm:p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:bg-slate-700/50 transition-all duration-200 group"
-                                >
-                                  <div className="flex justify-between items-start mb-2">
-                                    <h3 className="font-medium text-white text-sm leading-tight pr-2 flex-1">
-                                      {task.title}
-                                    </h3>
-                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                      {task.ai_recommendations && (
-                                        <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-xs">
-                                          <Sparkles className="w-3 h-3 mr-1" /> AI
-                                        </Badge>
-                                      )}
-                                      {isAdmin && (
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                                              <MoreVertical className="w-3 h-3" />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end" className="w-48 bg-slate-800 border-slate-700">
-                                            <DropdownMenuItem onClick={() => optimizeTask(task.id)} className="text-slate-300">
-                                              <Zap className="w-4 h-4 mr-2" /> AI Optimize
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => deleteTask(task.id)} className="text-red-300">
-                                              <Trash className="w-4 h-4 mr-2" /> Delete
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      )}
-                                    </div>
-                                  </div>
-                                  
-                                  <p className="text-xs text-slate-400 mb-2 line-clamp-2">
-                                    {task.description}
-                                  </p>
-
-                                  <div className="flex items-center justify-between mb-2">
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`text-xs ${priorityConfig[task.priority as keyof typeof priorityConfig]?.color || 'bg-gray-500/20'} flex items-center gap-1`}
-                                    >
-                                      {task.priority}
-                                    </Badge>
-                                    <span className="text-xs text-slate-500 truncate ml-2 max-w-[80px] sm:max-w-none">
-                                      {getAssigneeName(task)}
-                                    </span>
-                                  </div>
-                                  
-                                  <div className="flex items-center justify-between">
-                                    {task.deadline && (
-                                      <div className="flex items-center gap-1 text-xs text-slate-500">
-                                        <Calendar className="w-3 h-3 flex-shrink-0" />
-                                        <span className="truncate">{new Date(task.deadline).toLocaleDateString()}</span>
-                                      </div>
-                                    )}
-                                    
-                                    {col.id !== 'done' && (
-                                      <Button 
-                                        size="sm" 
-                                        variant="ghost" 
-                                        className="h-6 text-xs bg-slate-700/50 hover:bg-slate-600/50 flex-shrink-0 ml-2"
-                                        onClick={() => {
-                                          const currentIndex = columns.findIndex(c => c.id === col.id);
-                                          const nextStatus = columns[Math.min(currentIndex + 1, columns.length - 1)].id;
-                                          updateStatus(task.id, nextStatus);
-                                        }}
-                                      >
-                                        Move <ArrowRight className="w-3 h-3 ml-1" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              ))}
-                            </AnimatePresence>
-                            
-                            {tasksInColumn.length === 0 && (
-                              <motion.div 
-                                className="text-center py-8 text-slate-500"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                              >
-                                <div className="text-3xl sm:text-4xl mb-2">📭</div>
-                                <p className="text-sm">No tasks here</p>
-                              </motion.div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    );
-                  })}
-                </div>
+              <TabsContent value="kanban" className="space-y-6">
+                <KanbanBoard
+                  tasks={tasks}
+                  loading={loading}
+                  isAdmin={isAdmin}
+                  onUpdateStatus={updateStatus}
+                  onDeleteTask={deleteTask}
+                  onOptimizeTask={optimizeTask}
+                  getTasksByStatus={getTasksByStatus}
+                  getAssigneeName={getAssigneeName}
+                  searchQuery={searchQuery}
+                  filterPriority={filterPriority}
+                  optimizingTasks={optimizingTasks}
+                  taskOptimizations={taskOptimizations}
+                />
               </TabsContent>
 
               {/* List View */}
               <TabsContent value="list">
-                {filteredTasks.length === 0 ? (
-                  <motion.div 
-                    className="text-center py-12 sm:py-16"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                  >
-                    <div className="text-4xl sm:text-6xl mb-4">🔍</div>
-                    <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">No tasks found</h3>
-                    <p className="text-slate-400 text-sm sm:text-base">
-                      {searchQuery ? "No tasks match your search criteria." : "Get started by creating your first task!"}
-                    </p>
-                  </motion.div>
-                ) : (
-                  <div className="space-y-2 sm:space-y-3">
-                    {filteredTasks.map((task, index) => (
-                      <motion.div
-                        key={task.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                      >
-                        <Card className="bg-slate-800/50 border-slate-700 hover:bg-slate-700/50 transition-all duration-200 backdrop-blur-sm">
-                          <CardContent className="p-3 sm:p-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-                              <div className="flex-1 space-y-2 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h3 className="font-semibold text-white text-sm sm:text-base truncate flex-1 min-w-0">{task.title}</h3>
-                                  <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`${priorityConfig[task.priority as keyof typeof priorityConfig]?.color || 'bg-gray-500/20'} text-xs`}
-                                    >
-                                      {task.priority}
-                                    </Badge>
-                                    <Badge variant="secondary" className="text-xs capitalize">
-                                      {REVERSE_STATUS_MAP[task.status as keyof typeof REVERSE_STATUS_MAP] || task.status}
-                                    </Badge>
-                                    {task.ai_recommendations && (
-                                      <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-xs">
-                                        <Sparkles className="w-3 h-3 mr-1" /> AI
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                                <p className="text-xs sm:text-sm text-slate-400 line-clamp-2">
-                                  {task.description}
-                                </p>
-                                <div className="flex items-center gap-3 sm:gap-4 text-xs text-slate-500 flex-wrap">
-                                  <span className="truncate">Assigned to: {getAssigneeName(task)}</span>
-                                  {task.deadline && (
-                                    <span className="flex items-center gap-1 flex-shrink-0">
-                                      <Calendar className="w-3 h-3" />
-                                      {new Date(task.deadline).toLocaleDateString()}
-                                    </span>
-                                  )}
-                                  {task.category && (
-                                    <span className="truncate">Category: {task.category}</span>
-                                  )}
-                                  {task.estimated_hours && (
-                                    <span className="flex items-center gap-1 flex-shrink-0">
-                                      <Clock4 className="w-3 h-3" />
-                                      {task.estimated_hours}h
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              <div className="flex gap-2 justify-end sm:justify-start">
-                                {isAdmin && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    onClick={() => optimizeTask(task.id)}
-                                    className="border-blue-600 text-blue-400 hover:bg-blue-600/20 text-xs"
-                                  >
-                                    <Zap className="w-3 h-3 mr-1" /> Optimize
-                                  </Button>
-                                )}
-                                {task.status !== 'completed' && (
-                                  <Button 
-                                    size="sm" 
-                                    onClick={() => updateStatus(task.id, "done")}
-                                    className="bg-green-600 hover:bg-green-700 text-xs"
-                                  >
-                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Complete
-                                  </Button>
-                                )}
-                                {isAdmin && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="destructive" 
-                                    onClick={() => deleteTask(task.id)}
-                                    className="text-xs"
-                                  >
-                                    <Trash className="w-3 h-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
+                <TaskList
+                  tasks={tasks}
+                  isAdmin={isAdmin}
+                  onUpdateStatus={updateStatus}
+                  onDeleteTask={deleteTask}
+                  onOptimizeTask={optimizeTask}
+                  getAssigneeName={getAssigneeName}
+                  searchQuery={searchQuery}
+                  filterPriority={filterPriority}
+                  optimizingTasks={optimizingTasks}
+                  taskOptimizations={taskOptimizations}
+                />
               </TabsContent>
             </Tabs>
           </motion.div>
         )}
 
-        {/* Task Modal */}
-        <AnimatePresence>
-          {showTaskModal && selectedEmployee && (
-            <motion.div 
-              className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-3 sm:p-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <motion.div 
-                className="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto backdrop-blur-sm"
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex items-center justify-between mb-4 sm:mb-6">
-                    <h2 className="text-lg sm:text-xl font-semibold text-white">
-                      Assign Task to {selectedEmployee.first_name}
-                    </h2>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowTaskModal(false)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      <X className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </Button>
-                  </div>
+        {/* Task Creation Modal */}
+        <Dialog open={showTaskModal} onOpenChange={setShowTaskModal}>
+          <DialogContent className="bg-slate-800 border-slate-700 max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-white">
+                <Plus className="w-5 h-5 text-blue-400" /> Create New Task
+                {selectedEmployee && (
+                  <Badge variant="secondary" className="bg-blue-500/20 text-blue-300">
+                    For: {selectedEmployee.first_name} {selectedEmployee.last_name}
+                  </Badge>
+                )}
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                Create a new task and assign it to the selected employee
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-300 mb-2 block">Task Title *</label>
+                <Input
+                  placeholder="Enter task title..."
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm({...taskForm, title: e.target.value})}
+                  className="bg-slate-700/50 border-slate-600 text-white"
+                />
+              </div>
 
-                  <div className="space-y-3 sm:space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-slate-300 mb-2 block">Title</label>
-                      <Input 
-                        placeholder="Enter task title" 
-                        value={taskForm.title} 
-                        onChange={e => setTaskForm({...taskForm, title: e.target.value})}
-                        className="bg-slate-700/50 border-slate-600 text-white text-sm sm:text-base"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium text-slate-300 mb-2 block">Description</label>
-                      <Textarea 
-                        placeholder="Enter task description" 
-                        value={taskForm.description} 
-                        onChange={e => setTaskForm({...taskForm, description: e.target.value})}
-                        className="bg-slate-700/50 border-slate-600 text-white min-h-[80px] sm:min-h-[100px] text-sm sm:text-base"
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <div>
-                        <label className="text-sm font-medium text-slate-300 mb-2 block">Priority</label>
-                        <select 
-                          className="w-full p-2 bg-slate-700/50 border border-slate-600 rounded-md text-white text-sm focus:ring-2 focus:ring-blue-500/50"
-                          value={taskForm.priority}
-                          onChange={e => setTaskForm({...taskForm, priority: e.target.value})}
-                        >
-                          <option value="low">Low Priority</option>
-                          <option value="medium">Medium Priority</option>
-                          <option value="high">High Priority</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="text-sm font-medium text-slate-300 mb-2 block">Status</label>
-                        <select 
-                          className="w-full p-2 bg-slate-700/50 border border-slate-600 rounded-md text-white text-sm focus:ring-2 focus:ring-blue-500/50"
-                          value={taskForm.status}
-                          onChange={e => setTaskForm({...taskForm, status: e.target.value})}
-                        >
-                          <option value="pending">To Do</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="review">Review</option>
-                          <option value="completed">Completed</option>
-                        </select>
-                      </div>
-                    </div>
+              <div>
+                <label className="text-sm font-medium text-slate-300 mb-2 block">Description *</label>
+                <Textarea
+                  placeholder="Describe the task in detail..."
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm({...taskForm, description: e.target.value})}
+                  className="bg-slate-700/50 border-slate-600 text-white min-h-[100px]"
+                />
+              </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <div>
-                        <label className="text-sm font-medium text-slate-300 mb-2 block">Category</label>
-                        <Input 
-                          placeholder="e.g., Development, Design"
-                          value={taskForm.category} 
-                          onChange={e => setTaskForm({...taskForm, category: e.target.value})}
-                          className="bg-slate-700/50 border-slate-600 text-white text-sm sm:text-base"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-sm font-medium text-slate-300 mb-2 block">Est. Hours</label>
-                        <Input 
-                          type="number"
-                          placeholder="0"
-                          value={taskForm.estimatedHours || ''} 
-                          onChange={e => setTaskForm({...taskForm, estimatedHours: e.target.value ? parseInt(e.target.value) : null})}
-                          className="bg-slate-700/50 border-slate-600 text-white text-sm sm:text-base"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium text-slate-300 mb-2 block">Deadline</label>
-                      <Input 
-                        type="date" 
-                        value={taskForm.deadline} 
-                        onChange={e => setTaskForm({...taskForm, deadline: e.target.value})}
-                        className="bg-slate-700/50 border-slate-600 text-white text-sm sm:text-base"
-                      />
-                    </div>
-
-                    <div className="space-y-2 sm:space-y-3">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="ai-insights"
-                          checked={taskForm.generateAIInsights}
-                          onChange={e => setTaskForm({...taskForm, generateAIInsights: e.target.checked})}
-                          className="rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-blue-500/50 w-4 h-4"
-                        />
-                        <label htmlFor="ai-insights" className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                          <Brain className="w-4 h-4 text-purple-400" /> Generate AI Insights
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="auto-optimize"
-                          checked={taskForm.autoOptimize}
-                          onChange={e => setTaskForm({...taskForm, autoOptimize: e.target.checked})}
-                          className="rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-blue-500/50 w-4 h-4"
-                        />
-                        <label htmlFor="auto-optimize" className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                          <Zap className="w-4 h-4 text-amber-400" /> Auto-Optimize with AI
-                        </label>
-                      </div>
-                    </div>
-
-                    <Button 
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 mt-3 sm:mt-4 text-sm sm:text-base"
-                      onClick={createTask}
-                      disabled={!taskForm.title.trim()}
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" /> Create Task
-                    </Button>
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-300 mb-2 block">Priority</label>
+                  <Select value={taskForm.priority} onValueChange={(value) => setTaskForm({...taskForm, priority: value})}>
+                    <SelectTrigger className="bg-slate-700/50 border-slate-600 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low Priority</SelectItem>
+                      <SelectItem value="medium">Medium Priority</SelectItem>
+                      <SelectItem value="high">High Priority</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-300 mb-2 block">Deadline</label>
+                  <Input
+                    type="date"
+                    value={taskForm.deadline}
+                    onChange={(e) => setTaskForm({...taskForm, deadline: e.target.value})}
+                    className="bg-slate-700/50 border-slate-600 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-300 mb-2 block">Category</label>
+                  <Input
+                    placeholder="e.g., Development, Design, Marketing"
+                    value={taskForm.category}
+                    onChange={(e) => setTaskForm({...taskForm, category: e.target.value})}
+                    className="bg-slate-700/50 border-slate-600 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-300 mb-2 block">Estimated Hours</label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 8"
+                    value={taskForm.estimatedHours || ''}
+                    onChange={(e) => setTaskForm({...taskForm, estimatedHours: e.target.value ? parseInt(e.target.value) : null})}
+                    className="bg-slate-700/50 border-slate-600 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 p-4 bg-slate-700/30 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="generateAIInsights"
+                    checked={taskForm.generateAIInsights}
+                    onChange={(e) => setTaskForm({...taskForm, generateAIInsights: e.target.checked})}
+                    className="w-4 h-4 text-blue-600 bg-slate-600 border-slate-500 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                  <label htmlFor="generateAIInsights" className="text-sm text-slate-300">
+                    Generate AI Insights
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="autoOptimize"
+                    checked={taskForm.autoOptimize}
+                    onChange={(e) => setTaskForm({...taskForm, autoOptimize: e.target.checked})}
+                    className="w-4 h-4 text-purple-600 bg-slate-600 border-slate-500 rounded focus:ring-purple-500 focus:ring-2"
+                  />
+                  <label htmlFor="autoOptimize" className="text-sm text-slate-300">
+                    Auto-Optimize Task
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <Button 
+                  onClick={createTask}
+                  disabled={!taskForm.title.trim() || !taskForm.description.trim()}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Create Task
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowTaskModal(false)}
+                  className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* AI Modals */}
+        <AIPredictionsModal />
+        <AIRecommendationsModal />
+        <AIDashboardModal />
       </motion.div>
     </div>
   );

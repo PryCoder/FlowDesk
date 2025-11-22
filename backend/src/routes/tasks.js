@@ -358,40 +358,42 @@ router.post('/:taskId/ai/optimize', authenticate, async (req, res) => {
   }
 });
 
-// AI Task Predictions and Forecasting with Fallback
-router.get('/ai/predictions', authenticate, async (req, res) => {
-  try {
-    const { timeframe = '30d', predictionType = 'completion' } = req.query;
+// ==================== DYNAMIC PREDICTIONS ROUTE ====================
 
-    console.log(`[TaskRoutes] Generating predictions for ${timeframe}, type: ${predictionType}`);
+router.get('/ai/predictions/dynamic', authenticate, async (req, res) => {
+  try {
+    const { timeframe = '30d', predictionType = 'completion', includePatterns = 'true' } = req.query;
+
+    console.log(`[TaskRoutes] Generating dynamic predictions for user: ${req.user.userId}`);
     
-    const result = await taskAgent.generatePredictions({
+    const result = await taskAgent.generateDynamicPredictions({
       userId: req.user.userId,
       companyId: req.user.companyId,
       timeframe,
       predictionType,
-      userRole: req.user.role
+      includePatterns: includePatterns === 'true'
     });
 
     if (!result.success) {
-      console.warn('[TaskRoutes] Prediction generation failed');
       return res.status(400).json({ 
         success: false, 
-        error: 'AI prediction failed',
+        error: 'Dynamic prediction generation failed',
         fallbackUsed: result.fallbackUsed || false
       });
     }
 
     res.json({
       success: true,
-      message: 'AI predictions generated',
+      message: 'Dynamic predictions generated successfully',
       predictions: result,
       timeframe,
       confidence: result.confidenceScore,
+      dynamic: result.dynamic || false,
+      personalized: result.personalized || false,
       fallbackUsed: result.fallbackUsed || false
     });
   } catch (error) {
-    console.error('[TaskRoutes] Prediction error:', error.message);
+    console.error('[TaskRoutes] Dynamic prediction error:', error.message);
     res.status(400).json({ 
       success: false, 
       error: 'Prediction service temporarily unavailable',
@@ -400,46 +402,101 @@ router.get('/ai/predictions', authenticate, async (req, res) => {
   }
 });
 
-// AI-Powered Task Recommendations with Fallback
-router.get('/ai/recommendations', authenticate, async (req, res) => {
-  try {
-    const { type = 'similar', limit = 5 } = req.query;
+// ==================== PERSONALIZED RECOMMENDATIONS ROUTE ====================
 
-    console.log(`[TaskRoutes] Getting recommendations type: ${type}, limit: ${limit}`);
+router.get('/ai/recommendations/personalized', authenticate, async (req, res) => {
+  try {
+    const { type = 'adaptive', limit = 5, includeSkills = 'true' } = req.query;
+
+    console.log(`[TaskRoutes] Getting personalized recommendations for user: ${req.user.userId}`);
     
-    const result = await taskAgent.getIntelligentRecommendations({
+    const result = await taskAgent.getPersonalizedRecommendations({
       userId: req.user.userId,
       companyId: req.user.companyId,
       recommendationType: type,
       limit: parseInt(limit),
+      includeSkills: includeSkills === 'true',
       userContext: {
         role: req.user.role,
-        skills: req.user.skills || []
+        skills: req.user.skills || [],
+        preferences: req.user.preferences || {}
       }
     });
 
     if (!result.success) {
-      console.warn('[TaskRoutes] Recommendation generation failed');
       return res.status(400).json({ 
         success: false, 
-        error: 'AI recommendations failed',
+        error: 'Personalized recommendation generation failed',
         fallbackUsed: result.fallbackUsed || false
       });
     }
 
     res.json({
       success: true,
-      message: 'AI recommendations generated',
+      message: 'Personalized recommendations generated successfully',
       recommendations: result,
       type,
       relevanceScore: result.relevanceScore,
+      personalizationLevel: result.personalizationLevel || 'medium',
+      adaptive: result.adaptive || false,
+      skillTargeted: result.skillTargeted || false,
       fallbackUsed: result.fallbackUsed || false
     });
   } catch (error) {
-    console.error('[TaskRoutes] Recommendation error:', error.message);
+    console.error('[TaskRoutes] Personalized recommendation error:', error.message);
     res.status(400).json({ 
       success: false, 
       error: 'Recommendation service temporarily unavailable',
+      fallback: true
+    });
+  }
+});
+
+// ==================== INTELLIGENT DASHBOARD ROUTE ====================
+
+router.get('/ai/dashboard/intelligent', authenticate, async (req, res) => {
+  try {
+    const { timeframe = '30d', includeTrends = 'true', includeBenchmarks = 'true' } = req.query;
+
+    console.log(`[TaskRoutes] Generating intelligent dashboard for user: ${req.user.userId}`);
+    
+    // Get user's tasks for analysis
+    const tasks = await taskService.getUserTasks(req.user.userId, {
+      timeframe,
+      includeCompleted: true
+    });
+
+    const result = await taskAgent.generateIntelligentDashboard({
+      userId: req.user.userId,
+      companyId: req.user.companyId,
+      tasks: tasks || [],
+      timeframe,
+      includeTrends: includeTrends === 'true',
+      includeBenchmarks: includeBenchmarks === 'true'
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Intelligent dashboard generation failed',
+        fallbackUsed: result.fallbackUsed || false
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Intelligent dashboard generated successfully',
+      dashboard: result.dashboard,
+      intelligent: result.intelligent || false,
+      adaptive: result.adaptive || false,
+      timeframe,
+      fallbackUsed: result.fallbackUsed || false
+    });
+  } catch (error) {
+    console.error('[TaskRoutes] Intelligent dashboard error:', error.message);
+    res.status(400).json({ 
+      success: false, 
+      error: 'Dashboard service temporarily unavailable',
       fallback: true
     });
   }
