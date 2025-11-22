@@ -108,7 +108,7 @@ const fetchProfile = async () => {
     }
 
     // First verify the token is still valid
-    const verifyResponse = await fetch('http://localhost:3001/api/auth/verify', {
+    const verifyResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/verify`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -120,7 +120,7 @@ const fetchProfile = async () => {
     }
 
     // Then fetch the current user profile
-    const response = await fetch('http://localhost:3001/api/auth/current-user', {
+    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/current-user`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -180,7 +180,7 @@ const fetchProfile = async () => {
         position: data.position,
       };
   
-      const response = await fetch('http://localhost:3001/api/auth/employee/profile', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/employee/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -220,7 +220,7 @@ const fetchProfile = async () => {
     setIsChangingPassword(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3001/api/auth/change-password', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/change-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

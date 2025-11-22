@@ -11,7 +11,7 @@ import {
 
 // Enhanced API Service with Error Handling
 const meetingService = {
-  baseURL: 'http://localhost:3001/api/meetings',
+  baseURL: `${import.meta.env.VITE_BACKEND_URL}/api/meetings`,
   
   async request(endpoint, options = {}) {
     try {

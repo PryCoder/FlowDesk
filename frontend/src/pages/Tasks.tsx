@@ -99,8 +99,8 @@ import { Separator } from "@/components/ui/separator";
 import KanbanBoard from "../components/layout/kanban";
 import TaskList from "../components/layout/Listing";
 
-const API_BASE = "http://localhost:3001/api/tasks";
-const USERS_API = "http://localhost:3001/api/auth";
+const API_BASE = `${import.meta.env.VITE_BACKEND_URL}/api/tasks`;
+const USERS_API = `${import.meta.env.VITE_BACKEND_URL}/api/auth`;
 
 // Storage keys
 const STORAGE_KEYS = {

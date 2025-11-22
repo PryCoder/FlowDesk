@@ -31,7 +31,7 @@ const AuthPage = () => {
   const [activeTab, setActiveTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-
+  const API_BASE = import.meta.env.VITE_BACKEND_URL;
   return (
     <div className={`min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-indigo-950 flex items-center justify-center p-3 sm:p-4 md:p-6 ${fontClasses.body} relative overflow-hidden`}>
       {/* Enhanced Animated Background */}
@@ -404,7 +404,7 @@ const CompanySearch = ({ onCompanySelect, selectedCompany }) => {
   useEffect(() => {
     const loadCompanies = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/company/all');
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/company/all`);
         const data = await response.json();
         
         if (data.success) {
@@ -591,11 +591,11 @@ const LoginForm = ({ setIsLoading, setMessage, isLoading }) => {
     e.preventDefault();
     setIsLoading(true);
     setMessage({ type: '', text: '' });
-const r = 'https://flow-desk-o575.vercel.app';
+    
     try {
       const endpoint = formData.userType === 'admin' 
-        ? `${r}/api/auth/admin/login` 
-        : 'http://localhost:3001/api/auth/employee/login';
+        ? `${import.meta.env.VITE_BACKEND_URL}/api/auth/admin/login` 
+        : `${import.meta.env.VITE_BACKEND_URL}/api/auth/employee/login`;
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -856,7 +856,7 @@ const RegistrationForm = ({ setIsLoading, setMessage, isLoading }) => {
       const token = localStorage.getItem('token');
       const companyId = selectedCompany ? selectedCompany.id : formData.companyId;
       
-      const response = await fetch('http://localhost:3001/api/auth/otp/generate', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/otp/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -885,7 +885,7 @@ const RegistrationForm = ({ setIsLoading, setMessage, isLoading }) => {
 
     try {
       if (userType === 'admin') {
-        const response = await fetch('http://localhost:3001/api/auth/company/register', {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/company/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -918,7 +918,7 @@ const RegistrationForm = ({ setIsLoading, setMessage, isLoading }) => {
       } else {
         const companyId = selectedCompany ? selectedCompany.id : formData.companyId;
         
-        const response = await fetch('http://localhost:3001/api/auth/employee/register', {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/employee/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

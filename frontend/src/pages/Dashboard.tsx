@@ -86,7 +86,7 @@ const DashboardPage = () => {
     }
 
     try {
-      const res = await fetch('http://localhost:3001/api/auth/current-user', {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/current-user`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       

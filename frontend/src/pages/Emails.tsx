@@ -559,7 +559,7 @@ export default function Emails() {
     setAnalyzingSentiment(true);
     try {
       const res = await axios.post(
-        "http://localhost:3001/api/emails/sentiment",
+        `${import.meta.env.VITE_BACKEND_URL}/api/emails/sentiment`,
         { text },
         { headers }
       );
@@ -612,7 +612,7 @@ export default function Emails() {
       
       if (headers.Authorization) {
         const res = await axios.post(
-          "http://localhost:3001/api/emails/suggest-reply",
+          `${import.meta.env.VITE_BACKEND_URL}/api/emails/suggest-reply`,
           { text: emailText, tone },
           { headers }
         );
