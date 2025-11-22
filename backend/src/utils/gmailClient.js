@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import config from '../../Config/index.js';
+import config from '../../rec/index.js';
 
 // -------------------- OAuth2 Client --------------------
 const oauth2Client = new google.auth.OAuth2(

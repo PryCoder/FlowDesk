@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import config from '../../Config/index.js';
+import config from '../../rec/index.js';
 
 // Password utilities
 export const hashPassword = async (password) => {

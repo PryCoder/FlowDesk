@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import supabase from '../utils/supabaseClient.js';
-import config from '../../Config/index.js';
+import config from "../../rec/index.js";
+
 
 export class AuthService {
   constructor() {
