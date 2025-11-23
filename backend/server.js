@@ -12,6 +12,7 @@ import meetingRoutes from './src/routes/meeting.js';
 import workspaceRoutes from './src/routes/workspace.js';
 import taskRoutes from './src/routes/tasks.js';
 import emailRoutes from './src/routes/email.js';
+import calenderMeetRoutes from './src/routes/calenderMeetRoutes.js';
 
 dotenv.config();
 
@@ -52,7 +53,7 @@ app.set('io', io);
 
 // API routes - FIXED: Make sure all route files exist
 console.log('📦 Mounting API routes...');
-
+app.use('/api/calendar-meet', calenderMeetRoutes);
 try {
   app.use('/api/auth', authRoutes);
   console.log('✅ Auth routes mounted');

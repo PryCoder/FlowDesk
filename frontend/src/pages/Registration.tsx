@@ -32,6 +32,8 @@ const AuthPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const API_BASE = import.meta.env.VITE_BACKEND_URL;
+  console.log("Backend URL:", import.meta.env.VITE_BACKEND_URL);
+
   return (
     <div className={`min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-indigo-950 flex items-center justify-center p-3 sm:p-4 md:p-6 ${fontClasses.body} relative overflow-hidden`}>
       {/* Enhanced Animated Background */}

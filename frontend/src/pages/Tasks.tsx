@@ -335,6 +335,7 @@ export default function TasksPage() {
       setLoading(false);
     }
   }, [getAuthHeaders, saveToStorage, toast]);
+  console.log("Backend URL:", import.meta.env.VITE_BACKEND_URL);
 
   // Personalized Recommendations
   const fetchAIRecommendations = useCallback(async (type = 'adaptive', limit = 5) => {
