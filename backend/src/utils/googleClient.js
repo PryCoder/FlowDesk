@@ -1,61 +1,92 @@
 import { google } from 'googleapis';
+import config from '../../rec/index.js';
 
-export class GoogleClient {
-  constructor() {
-    this.oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-  }
+// -------------------- OAuth2 Client --------------------
+const oauth2Client = new google.auth.OAuth2(
+  config.gmail.clientId,
+   config.gmail.clientSecret,
+   config.gmail.redirectUri
+);
 
-  getAuthUrl(scopes = []) {
-    const authUrl = this.oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: scopes,
-      prompt: 'consent'
-    });
-    return authUrl;
-  }
+console.log("CALENDAR REDIRECT:",config.gmail.redirectUri);
+console.log("CALENDAR CLIENT ID:", process.env.GOOGLE_CLIENT_ID);
 
-  async getTokens(code) {
-    const { tokens } = await this.oauth2Client.getToken(code);
+// -------------------- Generate Auth URL --------------------
+export const getCalendarAuthUrl = () =>
+  oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/meetings.space.created'
+    ]
+  });
+
+// -------------------- Exchange Code for Tokens --------------------
+export const getTokensFromCode = async (code) => {
+  if (!code) throw new Error("Authorization code is required");
+
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
     return tokens;
+  } catch (err) {
+    console.error("❌ Error getting tokens:", err);
+    throw new Error("Failed to get tokens from code");
   }
+};
 
-  setCredentials(tokens) {
-    this.oauth2Client.setCredentials(tokens);
+// -------------------- Refresh Access Token --------------------
+export const refreshAccessToken = async (refreshToken) => {
+  if (!refreshToken) throw new Error("Refresh token is required");
+
+  try {
+    const tempClient = new google.auth.OAuth2(
+      config.google.clientId,
+      config.google.clientSecret,
+      config.google.redirectUri
+    );
+
+    tempClient.setCredentials({ refresh_token: refreshToken });
+
+    const accessToken = await tempClient.getAccessToken();
+    if (!accessToken?.token) throw new Error("Failed to refresh access token");
+
+    return { access_token: accessToken.token, refresh_token: refreshToken };
+  } catch (err) {
+    console.error("❌ Error refreshing token:", err);
+    throw new Error("Failed to refresh access token");
   }
+};
 
-  async refreshAccessToken(refreshToken) {
-    try {
-      this.oauth2Client.setCredentials({
-        refresh_token: refreshToken
-      });
-      
-      const { credentials } = await this.oauth2Client.refreshAccessToken();
-      return credentials;
-    } catch (error) {
-      throw new Error(`Failed to refresh token: ${error.message}`);
-    }
-  }
+// -------------------- Calendar Client --------------------
+export const getCalendarClient = (tokens) => {
+  if (!tokens) throw new Error("Tokens missing");
+  oauth2Client.setCredentials(tokens);
 
-  isTokenExpired(tokens) {
-    if (!tokens.expiry_date) return true;
-    return Date.now() >= tokens.expiry_date;
-  }
+  return google.calendar({
+    version: "v3",
+    auth: oauth2Client
+  });
+};
 
-  // Calendar client
-  getCalendarClient(tokens) {
-    this.setCredentials(tokens);
-    return google.calendar({ version: 'v3', auth: this.oauth2Client });
-  }
+// -------------------- Google Meet Client --------------------
+export const getMeetClient = (tokens) => {
+  if (!tokens) throw new Error("Tokens missing");
+  oauth2Client.setCredentials(tokens);
 
-  // Meet client
-  getMeetClient(tokens) {
-    this.setCredentials(tokens);
-    return google.meet({ version: 'v2', auth: this.oauth2Client });
-  }
-}
+  return google.meet({
+    version: "v2",
+    auth: oauth2Client
+  });
+};
 
-export default new GoogleClient();
+// -------------------- Default Export --------------------
+export default {
+  getCalendarAuthUrl,
+  getTokensFromCode,
+  refreshAccessToken,
+  getCalendarClient,
+  getMeetClient
+};

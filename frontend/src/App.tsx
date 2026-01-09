@@ -25,6 +25,9 @@ import Registration from "./pages/Registration";
 import GmailAuthPage from "./pages/g.tsx";
 import DashboardPage from "./pages/Dashboard";
 import CalendarPage from "./pages/Calender.tsx";
+import CanvasDashboard from "./components/canvas/canvasDashboard.tsx";
+import CanvasRoom from "./components/canvas/canvasRoom.tsx";
+import JoinRoom from "./components/canvas/joinRoom.tsx";
 // import WorkspacePage from "./pages/Workspace.tsx";
 
 const queryClient = new QueryClient();
@@ -193,6 +196,10 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+               <Route path="/canvas" element={<CanvasDashboard />} />
+      <Route path="/canvas/room/:roomId" element={<CanvasRoom/>} />
+      <Route path="/canvas/join/:roomCode" element={<JoinRoom />} />
+      <Route path="/canvas/join" element={<JoinRoom />} />
               <Route
                 path="/settings"
                 element={

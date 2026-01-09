@@ -5,6 +5,8 @@ import helmet from 'helmet';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import canvasRoutes from './src/routes/canvas.js';
+import { RealtimeService } from './src/services/RealtimeServices.js';
 
 // Routes
 import authRoutes from './src/routes/auth.js';
@@ -81,6 +83,28 @@ try {
 } catch (error) {
   console.log('❌ Failed to mount task routes:', error.message);
 }
+
+console.log('📦 Mounting Canvas routes...');
+try {
+  app.use('/api/canvas', canvasRoutes);
+  console.log('✅ Canvas routes mounted');
+} catch (error) {
+  console.log('❌ Failed to mount canvas routes:', error.message);
+}
+
+// Initialize real-time service after Socket.IO setup
+const realtimeService = new RealtimeService(io);
+
+// Add real-time stats endpoint (optional)
+app.get('/api/realtime/stats', (req, res) => {
+  const stats = realtimeService.getAllActiveRooms();
+  res.json({
+    success: true,
+    activeRooms: stats,
+    totalActiveRooms: stats.length,
+    timestamp: new Date().toISOString()
+  });
+});
 
 console.log('✅ All routes mounted');
 
