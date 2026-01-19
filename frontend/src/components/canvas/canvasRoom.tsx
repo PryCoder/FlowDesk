@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -55,6 +55,49 @@ interface CanvasUser {
   cursor: { x: number; y: number };
 }
 
+type ToolType = 'brush' | 'shape' | 'text' | 'sticky' | 'eraser';
+
+interface BrushStrokePoint {
+  x: number;
+  y: number;
+}
+
+interface BrushStroke {
+  id: string;
+  userId: string;
+  color: string;
+  size: number;
+  points: BrushStrokePoint[];
+  isEraser?: boolean;
+}
+
+interface ShapeRect {
+  id: string;
+  userId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+}
+
+interface CanvasText {
+  id: string;
+  userId: string;
+  x: number;
+  y: number;
+  value: string;
+  color: string;
+}
+
+interface StickyNote {
+  id: string;
+  userId: string;
+  x: number;
+  y: number;
+  text: string;
+}
+
 const CanvasRoom: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -67,9 +110,19 @@ const CanvasRoom: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
   const [usersDrawerOpen, setUsersDrawerOpen] = useState(false);
-  const [tool, setTool] = useState<'brush' | 'shape' | 'text' | 'sticky'>('brush');
+  const [tool, setTool] = useState<ToolType>('brush');
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [textInput, setTextInput] = useState({ visible: false, x: 0, y: 0, value: '' });
+
+  const [brushStrokes, setBrushStrokes] = useState<BrushStroke[]>([]);
+  const [shapes, setShapes] = useState<ShapeRect[]>([]);
+  const [texts, setTexts] = useState<CanvasText[]>([]);
+  const [stickies, setStickies] = useState<StickyNote[]>([]);
+  const currentStrokeRef = useRef<BrushStroke | null>(null);
+  const tempShapeRef = useRef<ShapeRect | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -78,7 +131,6 @@ const CanvasRoom: React.FC = () => {
   const CANVAS_API = `${API_BASE_URL}/api/canvas`;
   const SOCKET_URL = API_BASE_URL;
 
-  // Fetch room details and current user
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem('token');
@@ -88,7 +140,6 @@ const CanvasRoom: React.FC = () => {
       }
 
       try {
-        // Get current user
         const userRes = await fetch(`${API_BASE_URL}/api/auth/current-user`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -101,7 +152,6 @@ const CanvasRoom: React.FC = () => {
           setCurrentUser(userData.user || userData);
         }
 
-        // Get room details
         const roomRes = await fetch(`${CANVAS_API}/${roomId}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -128,7 +178,84 @@ const CanvasRoom: React.FC = () => {
     fetchData();
   }, [roomId, navigate]);
 
-  // Connect to WebSocket
+  const redrawCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    brushStrokes.forEach(stroke => {
+      if (!stroke.points.length) return;
+      ctx.strokeStyle = stroke.isEraser ? '#f8f9fa' : stroke.color;
+      ctx.lineWidth = stroke.size;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      stroke.points.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    });
+
+    shapes.forEach(shape => {
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+    });
+
+    if (tempShapeRef.current) {
+      const s = tempShapeRef.current;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(s.x, s.y, s.width, s.height);
+      ctx.setLineDash([]);
+    }
+
+    stickies.forEach(sticky => {
+      ctx.fillStyle = '#ffff88';
+      ctx.strokeStyle = '#e0e000';
+      ctx.fillRect(sticky.x, sticky.y, 140, 80);
+      ctx.strokeRect(sticky.x, sticky.y, 140, 80);
+      ctx.fillStyle = '#000';
+      ctx.font = '12px Arial';
+      const lines = sticky.text.split('\n');
+      lines.forEach((line, i) => {
+        ctx.fillText(line, sticky.x + 8, sticky.y + 20 + i * 14);
+      });
+    });
+
+    texts.forEach(t => {
+      ctx.fillStyle = t.color;
+      ctx.font = '16px Arial';
+      ctx.fillText(t.value, t.x, t.y);
+    });
+  }, [brushStrokes, shapes, texts, stickies]);
+
+  const resizeCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = rect.width * ratio;
+    canvas.height = rect.height * ratio;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+    redrawCanvas();
+  }, [redrawCanvas]);
+
+  useEffect(() => {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    return () => window.removeEventListener('resize', resizeCanvas);
+  }, [resizeCanvas]);
+
+  useEffect(() => {
+    redrawCanvas();
+  }, [redrawCanvas]);
+
   useEffect(() => {
     if (!roomId || !currentUser) return;
 
@@ -142,70 +269,40 @@ const CanvasRoom: React.FC = () => {
 
     const socket = socketRef.current;
 
-    // Join canvas room
     socket.emit('join-canvas-room', {
       roomId,
       userId: currentUser.id,
       userName: `${currentUser.firstName} ${currentUser.lastName}`,
       userRole: currentUser.role,
-      permissions: {} // Add permissions from room data
+      permissions: {}
     });
 
-    // Listen for room state
     socket.on('room-state', (data) => {
       setParticipants(data.users || []);
       setChatMessages(data.chatHistory || []);
     });
 
-    // Listen for user join/leave
-    socket.on('user-joined', (data) => {
-      setParticipants(prev => [...prev, {
-        id: data.userId,
-        name: data.userName,
-        role: data.userRole,
-        cursor: { x: 0, y: 0 }
-      }]);
-      showSnackbar(`${data.userName} joined the room`);
+    socket.on('canvas-draw-update', (stroke: BrushStroke) => {
+      setBrushStrokes(prev => [...prev, stroke]);
     });
 
-    socket.on('user-left', (data) => {
-      setParticipants(prev => prev.filter(user => user.id !== data.userId));
-      showSnackbar('A user left the room');
+    socket.on('shape-added', (shape: ShapeRect) => {
+      setShapes(prev => [...prev, shape]);
     });
 
-    // Listen for cursor updates
-    socket.on('cursor-update', (data) => {
-      setParticipants(prev => prev.map(user =>
-        user.id === data.userId
-          ? { ...user, cursor: data.cursor }
-          : user
-      ));
+    socket.on('text-added', (text: CanvasText) => {
+      setTexts(prev => [...prev, text]);
     });
 
-    // Listen for chat messages
-    socket.on('chat-message', (message) => {
-      setChatMessages(prev => [...prev, message]);
+    socket.on('sticky-added', (sticky: StickyNote) => {
+      setStickies(prev => [...prev, sticky]);
     });
 
-    // Listen for canvas updates
-    socket.on('canvas-draw-update', (data) => {
-      // Handle drawing updates
-      console.log('Drawing update:', data);
-    });
-
-    socket.on('shape-added', (data) => {
-      // Handle shape addition
-      console.log('Shape added:', data);
-    });
-
-    socket.on('text-added', (data) => {
-      // Handle text addition
-      console.log('Text added:', data);
-    });
-
-    socket.on('sticky-added', (data) => {
-      // Handle sticky note addition
-      console.log('Sticky added:', data);
+    socket.on('canvas-cleared', () => {
+      setBrushStrokes([]);
+      setShapes([]);
+      setTexts([]);
+      setStickies([]);
     });
 
     return () => {
@@ -216,41 +313,158 @@ const CanvasRoom: React.FC = () => {
     };
   }, [roomId, currentUser]);
 
-  // Handle canvas interactions
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !roomId || !currentUser) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const getMousePos = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
 
-    // Set up canvas
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+    const handleMouseDown = (e: MouseEvent) => {
+      const pos = getMousePos(e);
+      setIsDrawing(true);
+      setStartPos(pos);
+      setCursorPosition(pos);
+
+      if (tool === 'brush' || tool === 'eraser') {
+        const stroke: BrushStroke = {
+          id: `${Date.now()}-${Math.random()}`,
+          userId: currentUser.id,
+          color: tool === 'eraser' ? '#f8f9fa' : '#000000',
+          size: tool === 'eraser' ? 12 : 3,
+          points: [pos],
+          isEraser: tool === 'eraser',
+        };
+        currentStrokeRef.current = stroke;
+        setBrushStrokes(prev => [...prev, stroke]);
+      } else if (tool === 'text') {
+        setTextInput({ visible: true, x: pos.x, y: pos.y, value: '' });
+      } else if (tool === 'sticky') {
+        const sticky: StickyNote = {
+          id: `${Date.now()}-${Math.random()}`,
+          userId: currentUser.id,
+          x: pos.x,
+          y: pos.y,
+          text: 'Sticky Note',
+        };
+        setStickies(prev => [...prev, sticky]);
+        if (socketRef.current) {
+          socketRef.current.emit('sticky-added', { roomId, sticky });
+        }
+      } else if (tool === 'shape') {
+        tempShapeRef.current = {
+          id: `${Date.now()}-${Math.random()}`,
+          userId: currentUser.id,
+          x: pos.x,
+          y: pos.y,
+          width: 0,
+          height: 0,
+          color: '#000000',
+        };
+      }
+    };
 
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      
-      setCursorPosition({ x, y });
-      
-      // Send cursor position to server
+      const pos = getMousePos(e);
+      setCursorPosition(pos);
+
+      if (isDrawing) {
+        if (tool === 'brush' || tool === 'eraser') {
+          if (currentStrokeRef.current) {
+            const strokeId = currentStrokeRef.current.id;
+            setBrushStrokes(prev =>
+              prev.map(s =>
+                s.id === strokeId
+                  ? { ...s, points: [...s.points, pos] }
+                  : s
+              )
+            );
+          }
+        } else if (tool === 'shape' && tempShapeRef.current) {
+          const s = tempShapeRef.current;
+          tempShapeRef.current = {
+            ...s,
+            width: pos.x - s.x,
+            height: pos.y - s.y,
+          };
+          redrawCanvas();
+        }
+      }
+
       if (socketRef.current) {
         socketRef.current.emit('cursor-move', {
           roomId,
-          userId: currentUser?.id,
-          cursor: { x, y }
+          userId: currentUser.id,
+          cursor: pos,
         });
       }
     };
 
+    const handleMouseUp = () => {
+      if (isDrawing) {
+        if ((tool === 'brush' || tool === 'eraser') && currentStrokeRef.current) {
+          const finishedStroke = currentStrokeRef.current;
+          currentStrokeRef.current = null;
+          if (socketRef.current) {
+            socketRef.current.emit('canvas-draw-update', {
+              roomId,
+              stroke: finishedStroke,
+            });
+          }
+        } else if (tool === 'shape' && tempShapeRef.current) {
+          const finalShape = tempShapeRef.current;
+          tempShapeRef.current = null;
+          setShapes(prev => [...prev, finalShape]);
+          if (socketRef.current) {
+            socketRef.current.emit('shape-added', {
+              roomId,
+              shape: finalShape,
+            });
+          }
+        }
+        setIsDrawing(false);
+      }
+    };
+
+    const handleMouseLeave = () => {
+      if (isDrawing) handleMouseUp();
+    };
+
+    canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
+      canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [roomId, currentUser]);
+  }, [roomId, currentUser, tool, isDrawing, redrawCanvas]);
+
+  const handleTextSubmit = () => {
+    const { visible, x, y, value } = textInput;
+    if (!visible || !value.trim() || !currentUser) {
+      setTextInput({ visible: false, x: 0, y: 0, value: '' });
+      return;
+    }
+    const text: CanvasText = {
+      id: `${Date.now()}-${Math.random()}`,
+      userId: currentUser.id,
+      x,
+      y,
+      value: value.trim(),
+      color: '#000000',
+    };
+    setTexts(prev => [...prev, text]);
+    if (socketRef.current) {
+      socketRef.current.emit('text-added', { roomId, text });
+    }
+    setTextInput({ visible: false, x: 0, y: 0, value: '' });
+  };
 
   const showSnackbar = (message: string) => {
     setSnackbar({ open: true, message });
@@ -273,7 +487,6 @@ const CanvasRoom: React.FC = () => {
     if (!token || !roomId) return;
 
     try {
-      // Get canvas data
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -322,10 +535,14 @@ const CanvasRoom: React.FC = () => {
   };
 
   const handleClearCanvas = () => {
+    setBrushStrokes([]);
+    setShapes([]);
+    setTexts([]);
+    setStickies([]);
     if (socketRef.current && currentUser) {
       socketRef.current.emit('canvas-clear', {
         roomId,
-        userId: currentUser.id
+        userId: currentUser.id,
       });
     }
   };
@@ -357,10 +574,9 @@ const CanvasRoom: React.FC = () => {
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
       <Paper sx={{ p: 2, borderRadius: 0 }}>
         <Grid container alignItems="center" spacing={2}>
-          <Grid item>
+          <Grid size={{ xs: 'auto' }}>
             <Button
               startIcon={<ArrowBackIcon />}
               onClick={() => navigate('/canvas')}
@@ -368,7 +584,7 @@ const CanvasRoom: React.FC = () => {
               Back
             </Button>
           </Grid>
-          <Grid item xs>
+          <Grid size={{ xs: true }}>
             <Typography variant="h6">
               {room?.title}
               <Chip
@@ -391,7 +607,7 @@ const CanvasRoom: React.FC = () => {
               {room?.description}
             </Typography>
           </Grid>
-          <Grid item>
+          <Grid size={{ xs: 'auto' }}>
             <Box display="flex" gap={1}>
               <Tooltip title={`${participants.length} Participants`}>
                 <IconButton onClick={() => setUsersDrawerOpen(true)}>
@@ -427,9 +643,7 @@ const CanvasRoom: React.FC = () => {
         </Grid>
       </Paper>
 
-      {/* Main Content */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Toolbar */}
         <Paper sx={{ width: 60, display: 'flex', flexDirection: 'column', p: 1 }}>
           <Tooltip title="Brush" placement="right">
             <IconButton
@@ -437,6 +651,14 @@ const CanvasRoom: React.FC = () => {
               onClick={() => setTool('brush')}
             >
               <BrushIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Eraser" placement="right">
+            <IconButton
+              color={tool === 'eraser' ? 'primary' : 'default'}
+              onClick={() => setTool('eraser')}
+            >
+              <ClearIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Shapes" placement="right">
@@ -471,7 +693,6 @@ const CanvasRoom: React.FC = () => {
           </Tooltip>
         </Paper>
 
-        {/* Canvas */}
         <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <canvas
             ref={canvasRef}
@@ -479,12 +700,33 @@ const CanvasRoom: React.FC = () => {
               width: '100%',
               height: '100%',
               backgroundColor: '#f8f9fa',
-              cursor: 'crosshair'
+              cursor:
+                tool === 'brush' || tool === 'eraser'
+                  ? 'crosshair'
+                  : tool === 'text'
+                  ? 'text'
+                  : 'pointer',
             }}
           />
-          
-          {/* Cursor positions */}
-          {participants.map((user) => (
+
+          {textInput.visible && (
+            <TextField
+              size="small"
+              value={textInput.value}
+              onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
+              onBlur={handleTextSubmit}
+              autoFocus
+              sx={{
+                position: 'absolute',
+                left: textInput.x,
+                top: textInput.y,
+                zIndex: 10,
+              }}
+            />
+          )}
+
+          {participants.filter(user => user && user.cursor).map((user) => (
             <Tooltip key={user.id} title={user.name} arrow>
               <Box
                 sx={{
@@ -492,7 +734,7 @@ const CanvasRoom: React.FC = () => {
                   left: user.cursor.x,
                   top: user.cursor.y,
                   pointerEvents: 'none',
-                  color: 'primary.main'
+                  color: 'primary.main',
                 }}
               >
                 <CursorIcon fontSize="small" />
@@ -502,7 +744,6 @@ const CanvasRoom: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Participants Drawer */}
       <Drawer
         anchor="right"
         open={usersDrawerOpen}
@@ -515,7 +756,7 @@ const CanvasRoom: React.FC = () => {
             Participants ({participants.length})
           </Typography>
           <List>
-            {participants.map((user) => (
+            {participants.filter(user => user && user.name).map((user) => (
               <ListItem key={user.id}>
                 <ListItemAvatar>
                   <Avatar>
@@ -524,7 +765,7 @@ const CanvasRoom: React.FC = () => {
                 </ListItemAvatar>
                 <ListItemText
                   primary={user.name}
-                  secondary={user.role}
+                  secondary={user.role || 'Unknown'}
                 />
                 <Chip
                   label="Online"
@@ -538,7 +779,6 @@ const CanvasRoom: React.FC = () => {
         </Box>
       </Drawer>
 
-      {/* Chat Drawer */}
       <Drawer
         anchor="right"
         open={chatDrawerOpen}
@@ -551,7 +791,6 @@ const CanvasRoom: React.FC = () => {
             Chat
           </Typography>
           
-          {/* Messages */}
           <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
             {chatMessages.map((msg) => (
               <Paper
@@ -573,7 +812,6 @@ const CanvasRoom: React.FC = () => {
             ))}
           </Box>
 
-          {/* Message Input */}
           <Box>
             <TextField
               fullWidth
@@ -597,7 +835,6 @@ const CanvasRoom: React.FC = () => {
         </Box>
       </Drawer>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}

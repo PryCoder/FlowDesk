@@ -4,12 +4,12 @@ import config from '../../rec/index.js';
 // Initialize Gemini client
 const genAI = new GoogleGenAI({ apiKey: config.gemini.apiKey });
 
-export const getGeminiModel = (modelName = 'gemini-2.5-flash') => {
+export const getGeminiModel = (modelName = 'gemini-2.0-flash-exp') => {
   // In the new SDK, we don't need a separate getGenerativeModel method
   return { modelName };
 };
 
-export const generateText = async (prompt, modelName = 'gemini-2.5-flash') => {
+export const generateText = async (prompt, modelName = 'gemini-2.0-flash-exp') => {
   try {
     const response = await genAI.models.generateContent({
       model: modelName,
@@ -22,7 +22,7 @@ export const generateText = async (prompt, modelName = 'gemini-2.5-flash') => {
   }
 };
 
-export const generateStructuredOutput = async (prompt, schema, modelName = 'gemini-2.5-flash') => {
+export const generateStructuredOutput = async (prompt, schema, modelName = 'gemini-2.0-flash-exp') => {
   try {
     const structuredPrompt = `
       ${prompt}

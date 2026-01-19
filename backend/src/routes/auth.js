@@ -503,9 +503,7 @@ router.put('/employee/profile', authenticate, async (req, res) => {
 // Get Company Employees (Admin only)
 router.get('/company/employees', authenticate, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can access company employees' });
-    }
+   
     
     const { page = 1, limit = 50 } = req.query;
     const result = await authService.getCompanyEmployees(req.user.companyId, parseInt(page), parseInt(limit));

@@ -426,6 +426,7 @@ export default function TasksPage() {
       }
       
       const data = await res.json();
+      console.log("hi",data.user.company.id);
       if (!data.success) throw new Error(data.error || "Unable to fetch user");
 
       const adminStatus = data.user.role === "admin";

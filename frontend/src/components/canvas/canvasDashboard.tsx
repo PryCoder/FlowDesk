@@ -46,6 +46,17 @@ interface CanvasRoom {
   created_by: string;
 }
 
+// Invite type – adjust fields to match your backend
+interface CanvasInvite {
+  id: string;
+  roomId: string;
+  roomTitle: string;
+  roomCode: string;
+  invitedByName: string;
+  createdAt: string;
+  // status?: 'pending' | 'accepted' | 'rejected';
+}
+
 const CanvasDashboard: React.FC = () => {
   const [rooms, setRooms] = useState<CanvasRoom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,9 +65,17 @@ const CanvasDashboard: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [inviteDrawerOpen, setInviteDrawerOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [inviteRoomId, setInviteRoomId] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const[employeee,setEmployeee] = useState<any>();
   const [userRole, setUserRole] = useState<'admin' | 'employee'>('employee');
+
+  // NEW: invitations state
+  const [invites, setInvites] = useState<CanvasInvite[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState('');
+
   const navigate = useNavigate();
 
   const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
@@ -71,17 +90,29 @@ const CanvasDashboard: React.FC = () => {
         navigate('/login');
         return;
       }
-
+      
+       
       try {
+        
         const res = await fetch(`${USERS_API}/current-user`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
-
+        const rese = await fetch(`http://localhost:3001/api/auth/company/employees`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+    
+          const datae = await rese.json();
+          setEmployeee(datae);
+    console.log(datae);
         if (res.ok) {
           const data = await res.json();
+          console.log(data);
           setCurrentUser(data.user || data);
           setUserRole(data.role || data.user?.role || 'employee');
         }
@@ -152,12 +183,120 @@ const CanvasDashboard: React.FC = () => {
     }
   };
 
+  // NEW: fetch invitations for current user
+  const fetchInvites = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    setInvitesLoading(true);
+    setInvitesError('');
+    try {
+      const res = await fetch(`${CANVAS_API}/invites`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Expecting { invites: [...] }
+        setInvites(
+          (data.invites || []).map((inv: any): CanvasInvite => ({
+            id: inv.id,
+            roomId: inv.roomId || inv.room_id,
+            roomTitle: inv.roomTitle || inv.room_title || inv.room?.title || 'Canvas Room',
+            roomCode: inv.roomCode || inv.room_code || inv.room?.room_code,
+            invitedByName: inv.invitedByName || inv.invited_by_name || inv.invitedBy || 'Admin',
+            createdAt: inv.createdAt || inv.created_at,
+          }))
+        );
+      } else {
+        setInvitesError('Failed to load invitations');
+      }
+    } catch (e) {
+      console.error('Error loading invites', e);
+      setInvitesError('Error loading invitations');
+    } finally {
+      setInvitesLoading(false);
+    }
+  };
+
+  // NEW: accept invite
+  const handleAcceptInvite = async (invite: CanvasInvite) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    try {
+      // First, tell backend invite is accepted
+      await fetch(`${CANVAS_API}/invites/${invite.id}/accept`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }).catch(() => {});
+
+      // Then join the room (you can also let backend /accept return the room id)
+      const res = await fetch(`${CANVAS_API}/join/${invite.roomCode}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Remove invite from list locally
+        setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+        // Refresh rooms so joined room shows up
+        if (userRole === 'admin') {
+          fetchCompanyRooms();
+        } else {
+          fetchUserRooms();
+        }
+        navigate(`/canvas/room/${data.room.id}`);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to join room from invite');
+      }
+    } catch (err) {
+      console.error('Error accepting invite', err);
+      alert('Error accepting invite');
+    }
+  };
+
+  // NEW: reject / dismiss invite
+  const handleRejectInvite = async (inviteId: string) => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      await fetch(`${CANVAS_API}/invites/${inviteId}/reject`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }).catch(() => {});
+    } finally {
+      // Optimistically remove from UI
+      setInvites((prev) => prev.filter((i) => i.id !== inviteId));
+    }
+  };
+
   useEffect(() => {
     if (userRole === 'admin') {
       fetchCompanyRooms();
     } else {
       fetchUserRooms();
     }
+    // Fetch invites for all users (you can restrict to employees if needed)
+    fetchInvites();
   }, [userRole]);
 
   // Handle room menu
@@ -210,7 +349,7 @@ const CanvasDashboard: React.FC = () => {
 
   // Open invite drawer
   const handleOpenInviteDrawer = (roomId: string) => {
-    setSelectedRoom(roomId);
+    setInviteRoomId(roomId);
     setInviteDrawerOpen(true);
     handleMenuClose();
   };
@@ -262,6 +401,78 @@ const CanvasDashboard: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* NEW: Invitations panel at top */}
+      {invites.length > 0 && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="h6">
+              Canvas Invitations
+            </Typography>
+            <Box display="flex" alignItems="center" gap={1}>
+              {invitesLoading && <CircularProgress size={18} />}
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={fetchInvites}
+              >
+                Refresh
+              </Button>
+            </Box>
+          </Box>
+          {invitesError && (
+            <Alert
+              severity="error"
+              sx={{ mb: 1 }}
+              onClose={() => setInvitesError('')}
+            >
+              {invitesError}
+            </Alert>
+          )}
+          <Box display="flex" flexDirection="column" gap={1}>
+            {invites.map((inv) => (
+              <Paper
+                key={inv.id}
+                variant="outlined"
+                sx={{ p: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <Box>
+                  <Typography variant="subtitle1">
+                    {inv.roomTitle}
+                    <Chip
+                      label={inv.roomCode}
+                      size="small"
+                      sx={{ ml: 1 }}
+                      variant="outlined"
+                    />
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Invited by {inv.invitedByName}{' '}
+                    on {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : ''}
+                  </Typography>
+                </Box>
+                <Box display="flex" gap={1}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={() => handleAcceptInvite(inv)}
+                  >
+                    Join
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="inherit"
+                    onClick={() => handleRejectInvite(inv.id)}
+                  >
+                    Dismiss
+                  </Button>
+                </Box>
+              </Paper>
+            ))}
+          </Box>
+        </Paper>
+      )}
+
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
@@ -456,10 +667,15 @@ const CanvasDashboard: React.FC = () => {
       {/* Invite Drawer */}
       <InviteDrawer
         open={inviteDrawerOpen}
-        onClose={() => setInviteDrawerOpen(false)}
-        roomId={selectedRoom}
-        roomTitle={rooms.find(r => r.id === selectedRoom)?.title || ''}
+        onClose={() => {
+          setInviteDrawerOpen(false);
+          setInviteRoomId(null);
+        }}
+        roomId={inviteRoomId}
+        roomTitle={rooms.find(r => r.id === inviteRoomId)?.title || ''}
+        employees={employeee?.employees || []} // Pass fetched employees from dashboard
       />
+
     </Box>
   );
 };

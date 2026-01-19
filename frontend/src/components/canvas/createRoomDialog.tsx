@@ -55,15 +55,51 @@ const CreateRoomDialog: React.FC<CreateRoomDialogProps> = ({ open, onClose, onSu
 
     setLoading(true);
     setError('');
-
     try {
+        const res = await fetch('http://localhost:3001/api/auth/company/employees', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      
+        const data = await res.json(); // read the response first
+        if (res.ok) {
+          console.log('Success:', data);
+        } else {
+          console.error('Error response from server:', data);
+        }
+      } catch (err) {
+        console.error('Network error:', err);
+      }
+      
+    try {
+        const res1 = await fetch(`${API_BASE_URL}/api/auth/current-user`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          const data1 = await res1.json();
+          
+            const rese = await fetch(`http://localhost:3001/api/auth/company/employees`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+      
+            
+              const data3 = await rese.json();
+              console.log("hi",data3);
+
       const res = await fetch(`${CANVAS_API}/create`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({...formData,company_id:data1.user.company.id})
       });
 
       const data = await res.json();

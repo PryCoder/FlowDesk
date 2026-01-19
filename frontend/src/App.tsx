@@ -28,6 +28,7 @@ import CalendarPage from "./pages/Calender.tsx";
 import CanvasDashboard from "./components/canvas/canvasDashboard.tsx";
 import CanvasRoom from "./components/canvas/canvasRoom.tsx";
 import JoinRoom from "./components/canvas/joinRoom.tsx";
+import ChatbotPage from "./pages/chatbot.tsx";
 // import WorkspacePage from "./pages/Workspace.tsx";
 
 const queryClient = new QueryClient();
@@ -200,6 +201,7 @@ const App = () => {
       <Route path="/canvas/room/:roomId" element={<CanvasRoom/>} />
       <Route path="/canvas/join/:roomCode" element={<JoinRoom />} />
       <Route path="/canvas/join" element={<JoinRoom />} />
+      <Route path="/chatbot" element={<ChatbotPage />} />
               <Route
                 path="/settings"
                 element={

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Drawer,
   Box,
@@ -44,12 +44,11 @@ interface InviteDrawerProps {
   onClose: () => void;
   roomId: string | null;
   roomTitle: string;
+  employees: Employee[];
 }
 
-const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, roomTitle }) => {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, roomTitle, employees }) => {
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -61,41 +60,10 @@ const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, room
     canInvite: false
   });
 
-  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
   const CANVAS_API = `${API_BASE_URL}/api/canvas`;
-  const USERS_API = `${API_BASE_URL}/api/auth`;
 
-  // Fetch employees
-  useEffect(() => {
-    if (open && roomId) {
-      fetchEmployees();
-    }
-  }, [open, roomId]);
-
-  const fetchEmployees = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(`${USERS_API}/company/employees`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setEmployees(data.employees || data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching employees:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Employee selection
   const handleEmployeeSelect = (employeeId: string) => {
     setSelectedEmployees(prev =>
       prev.includes(employeeId)
@@ -112,134 +80,98 @@ const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, room
     }
   };
 
-  const handleInviteSelected = async () => {
-    if (!roomId || selectedEmployees.length === 0) return;
-
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    setInviting(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const invitationData = {
-        userIds: selectedEmployees,
-        permissions
-      };
-
-      const res = await fetch(`${CANVAS_API}/${roomId}/invite`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(invitationData)
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setSuccess(`Invited ${selectedEmployees.length} employee(s) successfully`);
-        setSelectedEmployees([]);
-        setTimeout(() => setSuccess(''), 3000);
-      } else {
-        setError(data.error || 'Failed to send invitations');
-      }
-    } catch (error) {
-      setError('Error sending invitations');
-      console.error(error);
-    } finally {
-      setInviting(false);
-    }
-  };
-
-  const handleEmailInvite = async () => {
-    if (!roomId || !emailInvite.trim()) return;
-
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    setInviting(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const invitationData = {
-        email: emailInvite.trim(),
-        permissions
-      };
-
-      const res = await fetch(`${CANVAS_API}/${roomId}/invite`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(invitationData)
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setSuccess(`Invitation sent to ${emailInvite}`);
-        setEmailInvite('');
-        setTimeout(() => setSuccess(''), 3000);
-      } else {
-        setError(data.error || 'Failed to send invitation');
-      }
-    } catch (error) {
-      setError('Error sending invitation');
-      console.error(error);
-    } finally {
-      setInviting(false);
-    }
-  };
-
+  // Filter employees by search query
   const filteredEmployees = employees.filter(emp =>
     emp.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
     emp.department?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Generic API call to invite
+  const sendInvite = async (body: any) => {
+    if (!roomId) {
+      setError('Room ID is missing.');
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setError('Please login first.');
+      return;
+    }
+
+    setInviting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const res = await fetch(`${CANVAS_API}/${roomId}/invite`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json().catch(() => ({}));
+console.log(data);
+      if (res.ok) {
+        // Success
+        if (body.userIds) {
+          setSuccess(`Invited ${body.userIds.length} employee(s) successfully`);
+          setSelectedEmployees([]);
+        } else if (body.email) {
+          setSuccess(`Invitation sent to ${body.email}`);
+          setEmailInvite('');
+        }
+      } else {
+        setError(data.error || `Failed to invite. Status code: ${res.status}`);
+      }
+    } catch (err: any) {
+      console.error('Network error:', err);
+      setError('Network error while sending invitation');
+    } finally {
+      setInviting(false);
+      // auto-clear success/error after 3s
+      setTimeout(() => {
+        setError('');
+        setSuccess('');
+      }, 3000);
+    }
+  };
+
+  // Invite selected employees
+  const handleInviteSelected = () => {
+    if (selectedEmployees.length === 0) return;
+    sendInvite({ userIds: selectedEmployees, permissions });
+  };
+
+  // Invite by email
+  const handleEmailInvite = () => {
+    if (!emailInvite.trim()) return;
+    sendInvite({ email: emailInvite.trim(), permissions });
+  };
+
   return (
-    <Drawer
-      anchor="right"
-      open={open}
-      onClose={onClose}
-      PaperProps={{ sx: { width: 400 } }}
-    >
+    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: 400 } }}>
       <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
           <Box>
             <Typography variant="h6">Invite to Canvas Room</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {roomTitle}
-            </Typography>
+            <Typography variant="body2" color="text.secondary">{roomTitle}</Typography>
           </Box>
-          <IconButton onClick={onClose} size="small">
-            <CloseIcon />
-          </IconButton>
+          <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
         </Box>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-            {error}
-          </Alert>
-        )}
-
-        {success && (
-          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
-            {success}
-          </Alert>
-        )}
+        {/* Error / Success */}
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {/* Email Invite */}
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="subtitle2" gutterBottom>
-            <EmailIcon sx={{ mr: 1, fontSize: 16 }} />
-            Invite by Email
+            <EmailIcon sx={{ mr: 1, fontSize: 16 }} /> Invite by Email
           </Typography>
           <Box display="flex" gap={1}>
             <TextField
@@ -263,8 +195,7 @@ const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, room
         {/* Permissions */}
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="subtitle2" gutterBottom>
-            <GroupIcon sx={{ mr: 1, fontSize: 16 }} />
-            Permissions for Invited Users
+            <GroupIcon sx={{ mr: 1, fontSize: 16 }} /> Permissions for Invited Users
           </Typography>
           <Box display="flex" flexWrap="wrap" gap={1}>
             <Chip
@@ -288,48 +219,28 @@ const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, room
           </Box>
         </Paper>
 
-        {/* Employee List Header */}
+        {/* Employee Search & List */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="subtitle1">
             Company Employees
-            <Badge
-              badgeContent={selectedEmployees.length}
-              color="primary"
-              sx={{ ml: 1 }}
-            />
+            <Badge badgeContent={selectedEmployees.length} color="primary" sx={{ ml: 1 }} />
           </Typography>
-          <Button
-            size="small"
-            onClick={handleSelectAll}
-            disabled={loading || filteredEmployees.length === 0}
-          >
+          <Button size="small" onClick={handleSelectAll} disabled={filteredEmployees.length === 0}>
             {selectedEmployees.length === filteredEmployees.length ? 'Deselect All' : 'Select All'}
           </Button>
         </Box>
 
-        {/* Search */}
         <TextField
           placeholder="Search employees..."
           size="small"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           sx={{ mb: 2 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
         />
 
-        {/* Employee List */}
         <Box sx={{ flexGrow: 1, overflow: 'auto', mb: 2 }}>
-          {loading ? (
-            <Box display="flex" justifyContent="center" p={3}>
-              <CircularProgress />
-            </Box>
-          ) : filteredEmployees.length === 0 ? (
+          {filteredEmployees.length === 0 ? (
             <Box textAlign="center" p={3}>
               <PersonAddIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
               <Typography color="text.secondary">
@@ -354,22 +265,14 @@ const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, room
                   <ListItemText
                     primary={`${employee.first_name} ${employee.last_name}`}
                     secondary={
-                      <>
+                      <Typography component="div" variant="body2" sx={{ display: 'flex', alignItems: 'center' }}>
                         {employee.email}
-                        {employee.department && (
-                          <Chip
-                            label={employee.department}
-                            size="small"
-                            sx={{ ml: 1, height: 20 }}
-                          />
-                        )}
-                      </>
+                        {employee.department && <Chip label={employee.department} size="small" sx={{ ml: 1, height: 20 }} />}
+                      </Typography>
                     }
                   />
                   <ListItemSecondaryAction>
-                    {selectedEmployees.includes(employee.id) && (
-                      <CheckIcon color="primary" />
-                    )}
+                    {selectedEmployees.includes(employee.id) && <CheckIcon color="primary" />}
                   </ListItemSecondaryAction>
                 </ListItem>
               ))}
@@ -381,21 +284,13 @@ const InviteDrawer: React.FC<InviteDrawerProps> = ({ open, onClose, roomId, room
         <Box sx={{ mt: 'auto' }}>
           <Divider sx={{ mb: 2 }} />
           <Box display="flex" gap={1}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
+            <Button fullWidth variant="outlined" onClick={onClose}>Cancel</Button>
             <Button
               fullWidth
               variant="contained"
               onClick={handleInviteSelected}
               disabled={selectedEmployees.length === 0 || inviting}
-              startIcon={
-                inviting ? <CircularProgress size={20} /> : <SendIcon />
-              }
+              startIcon={inviting ? <CircularProgress size={20} /> : <SendIcon />}
             >
               Invite Selected ({selectedEmployees.length})
             </Button>
